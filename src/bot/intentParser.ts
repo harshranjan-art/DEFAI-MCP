@@ -1,14 +1,15 @@
 import Groq from 'groq-sdk';
-import { recall } from '../utils/memory';
 import 'dotenv/config';
+import { logger } from '../utils/logger';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export interface Intent {
-  type: 'YIELD' | 'REMITTANCE' | 'SWAP' | 'PORTFOLIO' | 'UNKNOWN';
+  type: 'YIELD' | 'SWAP' | 'ARB' | 'DELTA_NEUTRAL' | 'SCAN' | 'PORTFOLIO' | 'TRADES' | 'RISK' | 'UNKNOWN';
   amount?: number;
   currency?: string;
-  destination?: string;
+  token?: string;
+  toToken?: string;
   rawText: string;
 }
 
@@ -23,7 +24,7 @@ const TOOL = {
       properties: {
         type: {
           type: 'string',
-          enum: ['YIELD', 'REMITTANCE', 'SWAP', 'PORTFOLIO', 'UNKNOWN'],
+          enum: ['YIELD', 'SWAP', 'ARB', 'DELTA_NEUTRAL', 'SCAN', 'PORTFOLIO', 'TRADES', 'RISK', 'UNKNOWN'],
           description: 'The intent type',
         },
         amount: {
@@ -32,11 +33,15 @@ const TOOL = {
         },
         currency: {
           type: 'string',
-          description: 'Currency code mentioned (e.g. BNB, USDT, INR)',
+          description: 'Currency / token symbol (e.g. BNB, USDT)',
         },
-        destination: {
+        token: {
           type: 'string',
-          description: 'Destination address or country for remittance',
+          description: 'Primary token (for swap: from token, for yield: deposit token)',
+        },
+        toToken: {
+          type: 'string',
+          description: 'Target token for swaps (e.g. USDT when swapping BNB to USDT)',
         },
       },
     },
@@ -44,21 +49,26 @@ const TOOL = {
 };
 
 export async function parseIntent(message: string, userId: string): Promise<Intent> {
-  console.log(`[Intent] Parsing message from user ${userId}: "${message}"`);
+  logger.info('Intent: parsing message from user %s: "%s"', userId, message);
 
   try {
-    console.log('[Intent] Fetching user memory...');
-    const memory = await recall(userId, message);
-    console.log(`[Intent] Memory result: ${memory ? `"${memory.slice(0, 100)}..."` : '(empty)'}`);
-
     const systemPrompt = [
-      'You are DeFAI Bharat, an AI agent helping Indian users with DeFi on BSC.',
-      'Classify the user message into one of: YIELD (deposit/earn/invest), REMITTANCE (send money abroad), SWAP (exchange tokens), PORTFOLIO (check balance/status), UNKNOWN.',
+      'You are DeFAI, an AI DeFi assistant on BSC Testnet.',
+      'Classify the user message into one of these categories:',
+      '  YIELD — deposit / earn / invest tokens for yield',
+      '  SWAP — exchange one token for another (e.g. "swap 0.1 BNB to USDT")',
+      '  ARB — arbitrage, cross-DEX spread, arb opportunities',
+      '  DELTA_NEUTRAL — delta-neutral position, hedged position, basis trade',
+      '  SCAN — check market data, APYs, prices, funding rates',
+      '  PORTFOLIO — check balance, positions, portfolio value',
+      '  TRADES — trade history, past transactions',
+      '  RISK — risk settings, risk tolerance, max position',
+      '  UNKNOWN — anything else',
+      '',
       'You MUST call the classify_intent function with your classification.',
-      memory ? `\nUser context from memory:\n${memory}` : '',
-    ].join('\n').trim();
+      'Extract amount, token, and toToken if mentioned.',
+    ].join('\n');
 
-    console.log('[Intent] Calling Groq API (llama-3.3-70b-versatile)...');
     const response = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
@@ -71,49 +81,42 @@ export async function parseIntent(message: string, userId: string): Promise<Inte
       temperature: 0,
     });
 
-    const choice = response.choices[0];
-    console.log(`[Intent] API response - finish_reason: ${choice.finish_reason}`);
-
-    const toolCall = choice.message.tool_calls?.[0];
+    const toolCall = response.choices[0]?.message.tool_calls?.[0];
     if (!toolCall) {
-      console.warn('[Intent] No tool call in response — returning UNKNOWN');
-      console.warn('[Intent] Response message:', JSON.stringify(choice.message, null, 2));
+      logger.warn('Intent: no tool call in response — returning UNKNOWN');
       return { type: 'UNKNOWN', rawText: message };
     }
 
-    console.log(`[Intent] Tool call args: ${toolCall.function.arguments}`);
     const input = JSON.parse(toolCall.function.arguments) as Omit<Intent, 'rawText'>;
-    console.log(`[Intent] Classified as: ${input.type}`, input.amount ? `amount=${input.amount}` : '', input.currency ? `currency=${input.currency}` : '');
+    logger.info('Intent: classified as %s (amount=%s, token=%s)', input.type, input.amount, input.token);
     return { ...input, rawText: message };
   } catch (e: any) {
-    console.error('[Intent] ERROR during intent parsing:', e.message);
-    console.error('[Intent] Error details:', e.status || '', e.error || '');
-    if (e.stack) console.error('[Intent] Stack:', e.stack);
+    logger.error('Intent: parsing error: %s', e.message);
     return { type: 'UNKNOWN', rawText: message };
   }
 }
 
 const FALLBACK_REPLY =
-  `🤔 Samajh nahi aaya. Try:\n\n• "Invest 0.1 BNB" — yield farming\n• "Send ₹5000 to family" — remittance\n• /portfolio — check balance`;
+  `I didn't understand that. Try:\n\n` +
+  `- "Invest 0.1 BNB" — deposit for yield\n` +
+  `- "Swap 0.01 BNB to USDT" — token swap\n` +
+  `- "Scan markets" — check APYs and prices\n` +
+  `- /portfolio — view positions\n` +
+  `- /arb — check arbitrage opportunities`;
 
 export async function generateConversationalReply(
   message: string,
-  userId: string
+  _userId: string,
 ): Promise<string> {
-  console.log(`[ConversationalReply] Generating reply for user ${userId}: "${message}"`);
   try {
-    const memory = await recall(userId, message);
-    console.log(`[ConversationalReply] Memory: ${memory ? `"${memory.slice(0, 80)}..."` : '(empty)'}`);
-
     const systemPrompt = [
-      'You are DeFAI Bharat, a friendly DeFi assistant for Indian users on BSC Testnet.',
-      'Reply in Hinglish (natural mix of Hindi and English) — warm, helpful, conversational.',
-      'You can help with: yield farming (Venus, PancakeSwap), remittance (sending money abroad), and portfolio tracking.',
-      'Keep replies short — 2-3 sentences max. Use 1-2 emojis max.',
-      'If the user asks what you can do, briefly explain your capabilities.',
+      'You are DeFAI, a friendly DeFi assistant on BSC Testnet.',
+      'Reply naturally — warm, helpful, conversational.',
+      'You help with: yield farming, token swaps (PancakeSwap), arbitrage, portfolio tracking, and market data.',
+      'Keep replies short — 2-3 sentences max.',
+      'If the user asks what you can do, briefly list your capabilities.',
       'Never mention that you are an AI model or name the underlying model.',
-      memory ? `\nUser context (use this to personalise your reply):\n${memory}` : '',
-    ].join('\n').trim();
+    ].join('\n');
 
     const response = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -125,11 +128,9 @@ export async function generateConversationalReply(
       temperature: 0.7,
     });
 
-    const reply = response.choices[0]?.message?.content?.trim();
-    console.log(`[ConversationalReply] Generated: "${reply?.slice(0, 80)}..."`);
-    return reply || FALLBACK_REPLY;
+    return response.choices[0]?.message?.content?.trim() || FALLBACK_REPLY;
   } catch (e: any) {
-    console.error('[ConversationalReply] Error:', e.message);
+    logger.error('ConversationalReply error: %s', e.message);
     return FALLBACK_REPLY;
   }
 }

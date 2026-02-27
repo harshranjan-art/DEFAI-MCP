@@ -1,36 +1,40 @@
 import cron from 'node-cron';
 import { getVenusAPY } from '../data/venus';
+import * as positionTracker from '../core/positionTracker';
+import { broadcastAlert } from './alertDispatcher';
+import { logger } from '../utils/logger';
 
-export interface YieldPosition {
-  entryAPY: number;
-  amount: number;
-  protocol: string;
-  txHash: string;
-  depositedAt: Date;
-}
-
-export const positions = new Map<string, YieldPosition>();
-
-let botRef: any = null;
-
-export function setBotRef(b: any): void {
-  botRef = b;
-}
-
+/**
+ * Cron job: check Venus APY every 5 minutes.
+ * If APY dropped significantly from a user's entry, alert via the dispatcher.
+ */
 export function startYieldWatcher(): void {
   cron.schedule('*/5 * * * *', async () => {
     try {
       const current = await getVenusAPY();
-      for (const [userId, pos] of positions) {
-        if (pos.entryAPY - current.apy >= 0.5) {
-          await botRef?.telegram.sendMessage(
-            userId,
-            `⚠️ *APY Alert!*\n\nVenus APY dropped from ${pos.entryAPY.toFixed(2)}% → ${current.apy.toFixed(2)}%\n\nYour ${pos.amount} BNB may earn less. Use /rebalance to move funds.`,
-            { parse_mode: 'Markdown' }
-          );
+
+      // Get all open positions on Venus
+      const allPositions = positionTracker.getAllOpenPositions();
+      const venusPositions = allPositions.filter(p => p.protocol === 'Venus');
+
+      for (const pos of venusPositions) {
+        if (pos.entry_apy && pos.entry_apy - current.apy >= 0.5) {
+          const message = [
+            `*APY Alert!*`,
+            ``,
+            `Venus APY dropped: ${pos.entry_apy.toFixed(2)}% → ${current.apy.toFixed(2)}%`,
+            `Position: ${pos.amount} ${pos.token}`,
+            ``,
+            `Consider using \`yield_rotate\` to move to a higher-APY protocol.`,
+          ].join('\n');
+
+          await broadcastAlert('apy_drop', message);
         }
       }
-    } catch { /* never crash the cron */ }
+    } catch (e: any) {
+      logger.error('Yield watcher failed: %s', e.message);
+    }
   });
-  console.log('[Watcher] Yield watcher started, checking every 5 minutes');
+
+  logger.info('Yield watcher started (every 5 minutes)');
 }

@@ -1,0 +1,17 @@
+[
+  { "name": "mint", "type": "function", "inputs": [], "outputs": [], "stateMutability": "payable" },
+  {
+    "name": "redeemUnderlying",
+    "type": "function",
+    "inputs": [{ "name": "redeemAmount", "type": "uint256" }],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "balanceOfUnderlying",
+    "type": "function",
+    "inputs": [{ "name": "owner", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "nonpayable"
+  }
+]
