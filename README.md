@@ -146,41 +146,45 @@ cd dashboard && npm install && cd ..
 
 ### Step 4 — Configure your environment file
 
-Copy the example file and fill in every value:
+The project includes a `.env.example` template with detailed comments for each variable:
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set each variable:
+Open the `[.env.example](.env.example)` file to see full descriptions of each variable, then fill in your `.env`:
 
-| Variable | Required | What to put |
+| Variable | Required | Get it from |
 |---|---|---|
-| `PRIVATE_KEY` | **Yes** | The 64-char hex key from Step 2d (with or without `0x` prefix) |
-| `PIMLICO_API_KEY` | **Yes** | Your Pimlico key from Step 2a |
-| `TELEGRAM_BOT_TOKEN` | **Yes** | The token from BotFather in Step 2c |
-| `TELEGRAM_BOT_USERNAME` | **Yes** | Your bot's @username from Step 2c, **without** the `@` sign |
-| `GROQ_API_KEY` | **Yes** | Your Groq key from Step 2b |
-| `JWT_SECRET` | **Yes** | The base64 string from Step 2e |
-| `BSC_TESTNET_RPC` | No | Leave blank to use the default public BSC Testnet RPC |
-| `DEFAI_USER_ID` | No | Leave blank on first run — set later to resume an existing user in MCP mode |
-| `MCP_TRANSPORT` | No | Leave blank (defaults to `stdio`). Set to `sse` for HTTP/SSE transport |
-| `TINYFISH_API_KEY` | No | TinyFish web-scraping API key (optional feature) |
+| `PRIVATE_KEY` | **Yes** | Generate: `openssl rand -hex 32` |
+| `PIMLICO_API_KEY` | **Yes** | [dashboard.pimlico.io](https://dashboard.pimlico.io/) (enable BSC Testnet) |
+| `TELEGRAM_BOT_TOKEN` | **Yes** | [@BotFather](https://t.me/BotFather) on Telegram (`/newbot`) |
+| `TELEGRAM_BOT_USERNAME` | **Yes** | From BotFather (without the `@` sign) |
+| `GROQ_API_KEY` | **Yes** | [console.groq.com/keys](https://console.groq.com/keys) |
+| `JWT_SECRET` | **Yes** | Generate: `openssl rand -base64 32` |
+| `ENCRYPTION_KEY` | No | Defaults to `defai-dev-default` (for testnet) |
+| `BSC_TESTNET_RPC` | No | Leave blank for default public RPC |
+| `MCP_TRANSPORT` | No | Leave blank (defaults to `stdio` for Claude Desktop) |
+| `DEFAI_USER_ID` | No | Leave blank on first run — fill in after dashboard registration |
+| `TINYFISH_API_KEY` | No | Optional feature |
 
-Your completed `.env` should look like:
+**Your completed `.env` should look like:**
 
 ```env
 PRIVATE_KEY=a64f3c8d...your64hexchars...
 PIMLICO_API_KEY=pim_xxxxxxxxxxxxxxxxxxxx
 TELEGRAM_BOT_TOKEN=123456789:ABCdef...
-TELEGRAM_BOT_USERNAME=defai_bharat_bot
+TELEGRAM_BOT_USERNAME=defai_mcp_tele_bot
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
 JWT_SECRET=K9mX2p...==
+ENCRYPTION_KEY=
 BSC_TESTNET_RPC=
-DEFAI_USER_ID=
 MCP_TRANSPORT=
+DEFAI_USER_ID=
 TINYFISH_API_KEY=
 ```
+
+> **Tip**: See [.env.example](.env.example) for the full list of variables with detailed comments explaining each one.
 
 ---
 
