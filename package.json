@@ -1,0 +1,35 @@
+{
+  "name": "defai-bharat",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:wallet": "ts-node scripts/testWallet.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.77.0",
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "groq-sdk": "^0.37.0",
+    "node-cron": "^4.2.1",
+    "permissionless": "^0.3.4",
+    "supermemory": "^4.11.1",
+    "telegraf": "^4.16.3",
+    "tslib": "^2.8.1",
+    "viem": "^2.46.2"
+  }
+}
