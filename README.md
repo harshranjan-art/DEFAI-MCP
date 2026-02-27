@@ -279,6 +279,27 @@ Replace (or add) the `defai` block with:
     }
   }
 }
+
+eg: {
+  "preferences": {
+    "coworkScheduledTasksEnabled": true,
+    "sidebarMode": "chat",
+    "coworkWebSearchEnabled": false
+  },
+  "mcpServers": {
+    "defai": {
+      "command": "/opt/homebrew/bin/node",
+      "args": [
+        "--require",
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/loadEnv.js",
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/dist/src/mcp/server.js"
+      ],
+      "env": {
+        "DEFAI_USER_ID": "<your dashboard generated user id from private key>"
+      }
+    }
+  }
+}
 ```
 
 Replace `/absolute/path/to/defai-bharat` with the actual path, and paste your UUID from Step 7 into `DEFAI_USER_ID`.
