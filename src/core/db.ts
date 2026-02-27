@@ -95,10 +95,23 @@ db.exec(`
     recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS auto_arb_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    max_loss_usd REAL NOT NULL,
+    max_slippage_bps INTEGER NOT NULL DEFAULT 50,
+    total_pnl_usd REAL DEFAULT 0,
+    trades_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active'
+  );
+
   CREATE INDEX IF NOT EXISTS idx_positions_user ON positions(user_id, status);
   CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id, executed_at);
   CREATE INDEX IF NOT EXISTS idx_snapshots_time ON market_snapshots(recorded_at);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
+  CREATE INDEX IF NOT EXISTS idx_auto_arb_status ON auto_arb_sessions(status);
 `);
 
 logger.info('SQLite database initialized at %s', DB_PATH);
@@ -178,13 +191,13 @@ export function getPosition(id: string) {
 
 export function insertPosition(pos: {
   id: string; user_id: string; type: string; protocol: string; token: string;
-  amount: string; entry_price?: number; entry_apy?: number; tx_hash?: string; metadata?: string;
+  amount: string; entry_price?: number; entry_apy?: number; current_value_usd?: number; tx_hash?: string; metadata?: string;
 }) {
   db.prepare(`
-    INSERT INTO positions (id, user_id, type, protocol, token, amount, entry_price, entry_apy, tx_hash, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO positions (id, user_id, type, protocol, token, amount, entry_price, entry_apy, current_value_usd, tx_hash, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(pos.id, pos.user_id, pos.type, pos.protocol, pos.token, pos.amount,
-    pos.entry_price ?? null, pos.entry_apy ?? null, pos.tx_hash ?? null, pos.metadata || '{}');
+    pos.entry_price ?? null, pos.entry_apy ?? null, pos.current_value_usd ?? null, pos.tx_hash ?? null, pos.metadata || '{}');
 }
 
 export function closePosition(id: string, closeTxHash?: string) {
@@ -273,6 +286,42 @@ export function getMarketSnapshots(opts?: { hours?: number; protocol?: string })
   return db.prepare(
     "SELECT * FROM market_snapshots WHERE recorded_at > datetime('now', ?) ORDER BY recorded_at ASC"
   ).all(`-${hours} hours`) as any[];
+}
+
+// ─── Auto Arb Session Helpers ───
+
+export function insertAutoArbSession(s: {
+  id: string; user_id: string; expires_at: string;
+  max_loss_usd: number; max_slippage_bps: number;
+}) {
+  // Stop any existing active session for this user first
+  db.prepare("UPDATE auto_arb_sessions SET status = 'stopped' WHERE user_id = ? AND status = 'active'").run(s.user_id);
+  db.prepare(`
+    INSERT INTO auto_arb_sessions (id, user_id, expires_at, max_loss_usd, max_slippage_bps)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(s.id, s.user_id, s.expires_at, s.max_loss_usd, s.max_slippage_bps);
+}
+
+export function getActiveAutoArbSessions(): any[] {
+  return db.prepare("SELECT * FROM auto_arb_sessions WHERE status = 'active'").all() as any[];
+}
+
+export function getAutoArbSession(userId: string): any | undefined {
+  return db.prepare("SELECT * FROM auto_arb_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT 1").get(userId) as any;
+}
+
+export function updateAutoArbSession(id: string, update: { status?: string; total_pnl_usd?: number; trades_count?: number }) {
+  if (update.status !== undefined) {
+    db.prepare('UPDATE auto_arb_sessions SET status = ? WHERE id = ?').run(update.status, id);
+  }
+  if (update.total_pnl_usd !== undefined && update.trades_count !== undefined) {
+    db.prepare('UPDATE auto_arb_sessions SET total_pnl_usd = ?, trades_count = ? WHERE id = ?')
+      .run(update.total_pnl_usd, update.trades_count, id);
+  }
+}
+
+export function stopAutoArbSession(userId: string) {
+  db.prepare("UPDATE auto_arb_sessions SET status = 'stopped' WHERE user_id = ? AND status = 'active'").run(userId);
 }
 
 export { db };

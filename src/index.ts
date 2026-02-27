@@ -4,6 +4,7 @@ import { startYieldWatcher } from './monitor/yieldWatcher';
 import { startArbWatcher } from './monitor/arbWatcher';
 import { startSnapshotLogger } from './monitor/snapshotLogger';
 import { startPositionHealthMonitor } from './monitor/positionHealth';
+import { startAutoArbExecutor } from './monitor/autoArbExecutor';
 import { startApiServer } from './api/server';
 import * as userResolver from './core/userResolver';
 import * as walletManager from './core/walletManager';
@@ -25,6 +26,7 @@ async function main() {
   startArbWatcher();
   startSnapshotLogger();
   startPositionHealthMonitor();
+  startAutoArbExecutor();
 
   // Start REST API server
   startApiServer();

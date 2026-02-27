@@ -126,12 +126,21 @@ export async function execute(
     tx_hash: sellTxHash,
   });
 
+  const isPancakeBuy = target.buyDex.toLowerCase().includes('pancake');
+  const isPancakeSell = target.sellDex.toLowerCase().includes('pancake');
+
   return {
     success: true,
     message: [
-      `Arbitrage executed (simulated):`,
-      `  Buy: 1 ${target.token} on ${target.buyDex} @ $${target.buyPrice.toFixed(4)}`,
+      `Arbitrage executed:`,
+      `  Buy:  1 ${target.token} on ${target.buyDex} @ $${target.buyPrice.toFixed(4)}`,
+      isPancakeBuy
+        ? `  Buy Tx: https://testnet.bscscan.com/tx/${buyTxHash}`
+        : `  Buy Tx: Simulated (${target.buyDex} has no BSC Testnet contracts)`,
       `  Sell: 1 ${target.token} on ${target.sellDex} @ $${target.sellPrice.toFixed(4)}`,
+      isPancakeSell
+        ? `  Sell Tx: https://testnet.bscscan.com/tx/${sellTxHash}`
+        : `  Sell Tx: Simulated (${target.sellDex} has no BSC Testnet contracts)`,
       `  Spread: ${target.spreadBps} bps`,
       `  Est. profit: $${target.estimatedProfitUsd.toFixed(4)}`,
     ].join('\n'),

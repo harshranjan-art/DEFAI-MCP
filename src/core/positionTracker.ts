@@ -46,6 +46,7 @@ export function openPosition(pos: {
   amount: string;
   entry_price?: number;
   entry_apy?: number;
+  current_value_usd?: number;
   tx_hash?: string;
   metadata?: Record<string, any>;
 }): Position {
@@ -59,6 +60,7 @@ export function openPosition(pos: {
     amount: pos.amount,
     entry_price: pos.entry_price,
     entry_apy: pos.entry_apy,
+    current_value_usd: pos.current_value_usd,
     tx_hash: pos.tx_hash,
     metadata: JSON.stringify(pos.metadata || {}),
   });

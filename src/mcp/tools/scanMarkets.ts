@@ -10,16 +10,19 @@ function formatYields(yields: YieldOpportunity[]): string {
 
   const top = yields.slice(0, 15);
   const lines = ['# Yield Opportunities (BSC)\n'];
-  lines.push('| Protocol | Pool | Token | APY | TVL | Risk | Testnet |');
-  lines.push('|----------|------|-------|-----|-----|------|---------|');
+  lines.push('> IMPORTANT: "REAL" = actual on-chain tx on BSC Testnet. "SIMULATED" = real APY data, but no testnet contracts — execution is mocked.\n');
+  lines.push('| Protocol | Pool | APY | TVL | Risk | Execution |');
+  lines.push('|----------|------|-----|-----|------|-----------|');
 
   for (const y of top) {
     const tvl = y.tvl > 0 ? `$${(y.tvl / 1e6).toFixed(1)}M` : '-';
-    const testnet = y.isSimulated ? 'Simulated' : 'Real';
-    lines.push(`| ${y.protocol} | ${y.pool} | ${y.token} | ${y.apy.toFixed(2)}% | ${tvl} | ${y.risk} | ${testnet} |`);
+    const exec = y.isSimulated ? '⚠️ SIMULATED' : '✅ REAL';
+    lines.push(`| ${y.protocol} | ${y.pool} | ${y.apy.toFixed(2)}% | ${tvl} | ${y.risk} | ${exec} |`);
   }
 
-  lines.push(`\nTotal: ${yields.length} opportunities across ${new Set(yields.map(y => y.protocol)).size} protocols`);
+  const realCount = yields.filter(y => !y.isSimulated).length;
+  const simCount = yields.filter(y => y.isSimulated).length;
+  lines.push(`\nTotal: ${yields.length} opportunities — ${realCount} real (on-chain), ${simCount} simulated`);
   return lines.join('\n');
 }
 

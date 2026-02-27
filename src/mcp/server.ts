@@ -19,6 +19,8 @@ import { executeDeltaNeutralOpen, executeDeltaNeutralClose } from './tools/delta
 import { executeRiskConfig } from './tools/riskConfig';
 import { executeSetAlert, executeGetAlerts } from './tools/setAlerts';
 import { executeLinkTelegram } from './tools/linkTransport';
+import { executeArbAutoStart, executeArbAutoStop, executeArbAutoStatus } from './tools/arbAuto';
+import { startAutoArbExecutor } from '../monitor/autoArbExecutor';
 
 const server = new McpServer({
   name: 'defai-bnb',
@@ -373,6 +375,58 @@ server.tool(
   }
 );
 
+// ─── TOOL: arb_auto_start ───
+server.tool(
+  'arb_auto_start',
+  'Start automated arbitrage for a fixed duration. Scans every 30s and executes all viable opportunities. Stops automatically when time expires or cumulative loss limit is hit. All trades are logged.',
+  {
+    duration_hours: z.number().describe('How many hours to run (e.g. 6)'),
+    max_loss_usd: z.number().describe('Stop if total loss exceeds this USD amount (e.g. 5)'),
+    max_slippage_bps: z.number().optional().describe('Max slippage per trade in basis points (default: 50)'),
+  },
+  async ({ duration_hours, max_loss_usd, max_slippage_bps }, extra) => {
+    try {
+      const userId = getUserId((extra as any)?.sessionId || 'default');
+      const result = executeArbAutoStart(userId, duration_hours, max_loss_usd, max_slippage_bps ?? 50);
+      return { content: [{ type: 'text' as const, text: result }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
+    }
+  }
+);
+
+// ─── TOOL: arb_auto_stop ───
+server.tool(
+  'arb_auto_stop',
+  'Stop the currently running automated arbitrage session.',
+  {},
+  async (_args, extra) => {
+    try {
+      const userId = getUserId((extra as any)?.sessionId || 'default');
+      const result = executeArbAutoStop(userId);
+      return { content: [{ type: 'text' as const, text: result }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
+    }
+  }
+);
+
+// ─── TOOL: arb_auto_status ───
+server.tool(
+  'arb_auto_status',
+  'Check the status of your automated arbitrage session — trades executed, total P&L, time remaining.',
+  {},
+  async (_args, extra) => {
+    try {
+      const userId = getUserId((extra as any)?.sessionId || 'default');
+      const result = executeArbAutoStatus(userId);
+      return { content: [{ type: 'text' as const, text: result }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
+    }
+  }
+);
+
 // ─── RESOURCE: supported_protocols ───
 server.resource(
   'supported_protocols',
@@ -410,6 +464,7 @@ async function resolveDefaultUser() {
 
 async function startStdio() {
   await resolveDefaultUser();
+  startAutoArbExecutor();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info('DeFAI MCP server started (stdio transport)');
@@ -417,6 +472,7 @@ async function startStdio() {
 
 async function startSse(port: number = 3001) {
   await resolveDefaultUser();
+  startAutoArbExecutor();
 
   const app = express();
   let sseTransport: SSEServerTransport | null = null;

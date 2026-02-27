@@ -1,4 +1,5 @@
 import { getYields, getYieldsForToken } from '../scanner/apyAggregator';
+import { getPrice as getPriceUsd } from '../scanner/priceAggregator';
 import * as walletManager from '../walletManager';
 import * as positionTracker from '../positionTracker';
 import * as tradeLogger from '../tradeLogger';
@@ -30,10 +31,10 @@ export async function deposit(
     };
   }
 
-  // 2. Pick target
+  // 2. Pick target — prefer real (on-chain) protocols over simulated when no protocol forced
   const target = forceProtocol
     ? yields.find(y => y.protocol.toLowerCase() === forceProtocol.toLowerCase()) || yields[0]
-    : yields[0];
+    : yields.find(y => !y.isSimulated) || yields[0]; // real first; fallback to highest APY simulated
 
   // 3. Check wallet balance
   const { client, publicClient, address } = walletManager.getClient(userId);
@@ -72,14 +73,19 @@ export async function deposit(
     logger.info('Simulated deposit on %s (no testnet contract)', target.protocol);
   }
 
-  // 5. Track position
+  // 5. Track position — calculate USD value at deposit time
+  const tokenPrice = await getPriceUsd(token).catch(() => 0);
+  const currentValueUsd = tokenPrice * parseFloat(amount);
+
   const position = positionTracker.openPosition({
     user_id: userId,
     type: 'yield',
     protocol: target.protocol,
     token,
     amount,
+    entry_price: tokenPrice,
     entry_apy: target.apy,
+    current_value_usd: currentValueUsd,
     tx_hash: txHash,
     metadata: { pool: target.pool, source: target.source, isSimulated: target.isSimulated },
   });

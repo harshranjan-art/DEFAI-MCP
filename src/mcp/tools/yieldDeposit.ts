@@ -6,17 +6,24 @@ export function formatDepositResult(result: DepositResult): string {
     return `Deposit failed: ${result.message}`;
   }
 
+  const isSimulated = !result.txHash || result.txHash.startsWith('0xsim_');
+  const executionBadge = isSimulated
+    ? `⚠️ SIMULATED — ${result.protocol} has no BSC Testnet contracts`
+    : `✅ ON-CHAIN — real transaction on BSC Testnet`;
+
   const lines = [
-    `Deposit successful!`,
+    `Deposit successful! [${executionBadge}]`,
     ``,
     `Protocol: ${result.protocol}`,
     `Amount: ${result.amount} ${result.token}`,
     `APY: ${result.apy.toFixed(2)}%`,
     `Position ID: ${result.positionId}`,
-    `Tx: ${result.txHash}`,
   ];
 
-  if (result.txHash && !result.txHash.startsWith('0xsim_')) {
+  if (isSimulated) {
+    lines.push(`Tx: SIMULATED — no real on-chain transaction. Use Venus to get a real BSCScan link.`);
+  } else {
+    lines.push(`Tx: ${result.txHash}`);
     lines.push(`BSCScan: https://testnet.bscscan.com/tx/${result.txHash}`);
   }
 
