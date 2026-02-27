@@ -5,11 +5,11 @@ data/
 *.db-shm
 *.db-wal
 .env
-.env.local
+.git/
+.claude/
 .DS_Store
-*.log
-coverage/
-.nyc_output/
 dashboard/node_modules/
 dashboard/dist/
 defai-master-plan.md
+coverage/
+*.log

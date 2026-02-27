@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { logger } from '../utils/logger';
 
 import authRoutes from './routes/auth';
@@ -22,8 +23,25 @@ app.use('/api/alerts', alertsRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'defai-api', chain: 'BSC Testnet (97)' });
+  res.json({
+    status: 'ok',
+    service: 'defai-api',
+    version: '1.0.0',
+    chain: 'BSC Testnet (97)',
+    uptime: Math.floor(process.uptime()),
+  });
 });
+
+// In production, serve the built dashboard as static files
+if (process.env.NODE_ENV === 'production') {
+  const dashboardPath = path.join(__dirname, '..', 'dashboard', 'dist');
+  app.use(express.static(dashboardPath));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(dashboardPath, 'index.html'));
+    }
+  });
+}
 
 export function startApiServer(port: number = 3002): void {
   app.listen(port, () => {

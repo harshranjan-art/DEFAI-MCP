@@ -1,7 +1,7 @@
 {
   "name": "defai-bharat",
   "version": "1.0.0",
-  "description": "",
+  "description": "Autonomous DeFi agent on BNB Chain — AI-powered yield optimization, cross-DEX arbitrage, and delta-neutral strategies, all gasless via ERC-4337",
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
@@ -11,12 +11,31 @@
     "mcp:sse": "MCP_TRANSPORT=sse ts-node src/mcp/server.ts",
     "api": "ts-node src/api/server.ts",
     "bot": "ts-node src/bot/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:wallet": "ts-node scripts/testWallet.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:wallet": "ts-node scripts/testWallet.ts",
+    "dashboard": "cd dashboard && npm run dev",
+    "docker:up": "docker-compose up --build -d",
+    "docker:down": "docker-compose down"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "defi",
+    "bnb-chain",
+    "bsc",
+    "ai-agent",
+    "erc-4337",
+    "account-abstraction",
+    "yield-farming",
+    "arbitrage",
+    "mcp",
+    "telegram-bot"
+  ],
+  "author": "DefAI MCP",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "type": "commonjs",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -27,7 +46,8 @@
     "@types/node-cron": "^3.0.11",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",

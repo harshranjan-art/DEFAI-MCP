@@ -1,0 +1,35 @@
+# DeFAI — BSC Testnet Deployments (Chain ID 97)
+# Explorer: https://testnet.bscscan.com
+
+## Account Abstraction (ERC-4337 v0.7)
+
+EntryPoint v0.7:            0x0000000071727De22E5E9d8BAf0edAc6f37da032
+  https://testnet.bscscan.com/address/0x0000000071727De22E5E9d8BAf0edAc6f37da032
+
+SimpleAccountFactory v0.7:  0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985
+  https://testnet.bscscan.com/address/0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985
+
+Pimlico Paymaster:          0x0000000000000039cd5e8aE05257CE51C473ddd1
+  https://testnet.bscscan.com/address/0x0000000000000039cd5e8aE05257CE51C473ddd1
+
+## DeFi Protocol Contracts
+
+Venus vBNB:                 0x2E7222e51c0f6e98610A1543Aa3836E092CDe62c
+  https://testnet.bscscan.com/address/0x2E7222e51c0f6e98610A1543Aa3836E092CDe62c
+
+PancakeSwap V2 Router:      0xD99D1c33F9fC3444f8101754aBC46c52416550D1
+  https://testnet.bscscan.com/address/0xD99D1c33F9fC3444f8101754aBC46c52416550D1
+
+## Tokens
+
+WBNB Testnet:               0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd
+  https://testnet.bscscan.com/address/0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd
+
+USDT Testnet:               0x337610d27c682E347C9cD60BD4b3b107C9d34dDd
+  https://testnet.bscscan.com/address/0x337610d27c682E347C9cD60BD4b3b107C9d34dDd
+
+## Notes
+# - All AA infrastructure uses v0.7 (EntryPoint + SimpleAccount + Pimlico paymaster)
+# - Venus and PancakeSwap are real testnet contracts with live execution
+# - Thena and BiSwap use real mainnet price data but simulated testnet transactions
+# - All transactions are gasless via Pimlico-sponsored UserOperations
