@@ -215,7 +215,7 @@ flowchart TD
 
 ### UUID-Based Identity — Privacy-Preserving Registration
 
-The recommended registration flow ensures the user's private key is entered exactly once in a secure dashboard form, then never appears again in any config file, chat message, or environment variable passed to Claude.
+The registration flow ensures the user's private key is entered exactly once in a secure dashboard form, then never appears again in any config file, chat message, or environment variable passed to Claude.
 
 ```
 Dashboard Register page (HTTPS, password-masked input)
@@ -398,7 +398,7 @@ open http://localhost:5173  # (or :3002 in Docker)
 
 | Interface | How to access |
 |---|---|
-| **Telegram** | Search for your bot username, send `/start` |
+| **Telegram** | go to: [@defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot), send `/start` |
 | **Dashboard** | Open `http://localhost:5173` (dev) or `:3002` (Docker) |
 | **API** | `curl http://localhost:3002/api/...` with JWT token |
 | **MCP** | Configure in Claude Desktop, then use tools |
