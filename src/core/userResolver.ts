@@ -5,7 +5,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { bscTestnet } from 'viem/chains';
 import { entryPoint07Address } from 'viem/account-abstraction';
 import { toSimpleSmartAccount } from 'permissionless/accounts';
-import { encrypt } from '../wallet/encryption';
+import { encrypt, getServerKey } from '../wallet/encryption';
 import * as dbOps from './db';
 import { ADDRESSES } from '../utils/constants';
 import { logger } from '../utils/logger';
@@ -60,7 +60,6 @@ export function resolveFromTelegram(telegramId: number): string | null {
  */
 export async function createUser(opts: {
   privateKey: string;
-  passphrase: string;
   telegramId?: number;
   label?: string;
 }): Promise<{ id: string; smartAccountAddress: string; apiKey: string }> {
@@ -81,7 +80,7 @@ export async function createUser(opts: {
   });
 
   const id = uuid();
-  const encryptedKey = encrypt(opts.privateKey, opts.passphrase);
+  const encryptedKey = encrypt(opts.privateKey, getServerKey());
   const apiKey = generateApiKey();
 
   dbOps.saveUser({
@@ -114,6 +113,17 @@ export function linkTelegram(apiKey: string, telegramId: number): boolean {
 }
 
 /**
+ * Link a Telegram ID to an existing user (via user ID directly).
+ */
+export function linkTelegramByUserId(userId: string, telegramId: number): boolean {
+  const user = dbOps.getUser(userId);
+  if (!user) return false;
+  dbOps.setTelegramId(userId, telegramId);
+  logger.info('Linked Telegram %d to user %s', telegramId, userId);
+  return true;
+}
+
+/**
  * Auto-create a default user from PRIVATE_KEY env if no users exist in DB.
  * This preserves backward compatibility with the existing Telegram bot.
  */
@@ -126,7 +136,6 @@ export async function ensureDefaultUser(): Promise<string | null> {
   logger.info('No users in DB — creating default user from PRIVATE_KEY env');
   const result = await createUser({
     privateKey,
-    passphrase: 'defai-dev-default',
     label: 'default-env',
   });
 

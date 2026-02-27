@@ -8,6 +8,7 @@ import portfolioRoutes from './routes/portfolio';
 import tradesRoutes from './routes/trades';
 import marketsRoutes from './routes/markets';
 import alertsRoutes from './routes/alerts';
+import arbRoutes from './routes/arb';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/trades', tradesRoutes);
 app.use('/api/markets', marketsRoutes);
 app.use('/api/alerts', alertsRoutes);
+app.use('/api/arb', arbRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

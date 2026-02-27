@@ -46,10 +46,10 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ api_key }),
     }),
-  register: (private_key: string, passphrase: string) =>
+  register: (private_key: string) =>
     request<{ userId: string; apiKey: string; smartAccountAddress: string; jwt: string }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ private_key, passphrase }),
+      body: JSON.stringify({ private_key }),
     }),
 };
 
@@ -70,6 +70,11 @@ export const markets = {
   prices: (token = 'BNB') => request<{ quotes: any[] }>(`/markets/prices?token=${token}`),
   funding: () => request<{ rates: any }>('/markets/funding'),
   history: (limit = 100) => request<{ snapshots: any[] }>(`/markets/history?limit=${limit}`),
+};
+
+// Arb
+export const arb = {
+  session: () => request<{ session: any | null }>('/arb'),
 };
 
 // Alerts

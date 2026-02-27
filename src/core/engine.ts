@@ -201,3 +201,7 @@ export function setAlert(
 export function getAlerts(userId: string): any[] {
   return dbOps.getAlerts(userId);
 }
+
+export function getArbSession(userId: string): any | null {
+  return dbOps.getAutoArbSession(userId) || null;
+}

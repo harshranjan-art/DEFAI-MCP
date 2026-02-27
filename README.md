@@ -184,145 +184,180 @@ TINYFISH_API_KEY=
 
 ---
 
-### Step 5 — Fund your Smart Account with testnet BNB
+### Step 5 — Start the backend
 
-When you first start the agent, it creates a **Smart Account** (ERC-4337) derived from your private key. You need to send a small amount of BSC Testnet BNB to this address so it can execute transactions.
-
-**5a. Start the agent to find your Smart Account address:**
+In **Terminal 1**, run:
 
 ```bash
 npm run dev
 ```
 
-Look for a log line like:
+You should see logs like:
 ```
-[INFO] Default user created: userId=1 smartAccount=0xYourSmartAccountAddress
-```
-
-Copy the `0xYourSmartAccountAddress` value.
-
-**5b. Get testnet BNB from the faucet:**
-
-1. Go to [testnet.bnbchain.org/faucet-smart](https://testnet.bnbchain.org/faucet-smart)
-2. Paste your Smart Account address
-3. Request testnet BNB (you'll receive 0.1 BNB)
-
-**5c. Verify the balance:**
-
-Check your Smart Account on [testnet.bscscan.com](https://testnet.bscscan.com) — paste your Smart Account address and confirm the BNB balance appears.
-
-> Pimlico sponsors gas fees via the Paymaster, but the Smart Account still needs a small BNB balance for on-chain interactions on BSC Testnet.
-
----
-
-### Step 6 — Start the backend
-
-Open a terminal and run:
-
-```bash
-# Terminal 1: Start bot + background crons + REST API (all-in-one)
-npm run dev
-```
-
-You should see output like:
-```
+[INFO] SQLite database initialized
 [INFO] REST API server started on port 3002
-[INFO] Telegram bot started (@your_bot_username)
+[INFO] Telegram bot launched
 [INFO] Yield watcher started (every 5 min)
 [INFO] Arb watcher started (every 2 min)
-[INFO] Position health watcher started (every 5 min)
-[INFO] Snapshot logger started (every 5 min)
 ```
 
-If you see errors, check the [Troubleshooting](#troubleshooting) section below.
+Leave this running. If you see errors, check the [Troubleshooting](#troubleshooting) section.
 
 ---
 
-### Step 7 — Start the dashboard
+### Step 6 — Start the dashboard
 
-Open a **second terminal** (keep Terminal 1 running):
+In **Terminal 2**, run:
 
 ```bash
-# Terminal 2: React dashboard (Vite dev server)
-npm run dashboard
+cd dashboard && npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173) in your browser.
-
-**Dashboard login:**
-- The API is at `http://localhost:3002`
-- Log in with the API key shown in the backend startup logs, or use the REST API to generate one
+You should see `Local: http://localhost:5173`. Leave this running.
 
 ---
 
-### Step 8 — Test the Telegram bot
+### Step 7 — Register on the dashboard
 
-1. Open Telegram
-2. Search for your bot by its username (e.g. `@defai_bharat_bot`)
-3. Send `/start`
+> **This is how your private key stays private.** You enter it once in a secure HTTPS form. The server encrypts it with AES-256-GCM and returns a UUID you use everywhere else — Claude and Telegram never see your private key.
 
-The bot will create your user account and Smart Account. You should receive a welcome message with your Smart Account address.
+1. Open [http://localhost:5173](http://localhost:5173)
+2. The **Register** tab should be selected by default
+3. Paste your private key into the **Private Key** field (it's masked — shows dots)
+4. Click **Register**
 
-Try these commands:
-```
-/start         — Register and see your wallet address
-/portfolio     — View your positions and balances
-scan markets   — Get live yield and price data
-```
+You should see a green "Registration successful!" banner with three items:
+
+| Item | What it is |
+|---|---|
+| **Smart Account address** | Your ERC-4337 gasless wallet on BSC Testnet — click to view on BSCScan |
+| **User ID (UUID)** | Your identity token — used in Claude config and Telegram `/connect` |
+| **API Key** (`dfai_k_...`) | Used to log in to the dashboard |
+
+**Copy both the UUID and the API Key and save them.** The page also shows ready-to-use setup instructions for Claude and Telegram — keep it open for the next steps.
 
 ---
 
-### Step 9 — (Optional) Connect Claude Desktop via MCP
+### Step 8 — Fund your Smart Account
 
-This lets Claude Desktop call your DeFAI tools directly.
+Your Smart Account needs a small amount of testnet BNB to execute on-chain transactions.
 
-**9a. Find your Claude Desktop config file:**
+1. Copy the **Smart Account address** from the registration page
+2. Go to [testnet.bnbchain.org/faucet-smart](https://testnet.bnbchain.org/faucet-smart)
+3. Paste your Smart Account address and request testnet BNB (you'll receive 0.1 BNB)
+4. Verify on [testnet.bscscan.com](https://testnet.bscscan.com) — paste the address and confirm the balance
 
-| OS | Config file location |
+> Pimlico sponsors gas via the Paymaster, but the Smart Account still needs a small BNB balance for BSC Testnet interactions.
+
+---
+
+### Step 9 — Configure Claude Desktop with your UUID
+
+Open your Claude Desktop config:
+
+| OS | Location |
 |---|---|
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-**9b. Add DeFAI to the config:**
+Replace (or add) the `defai` block with:
 
 ```json
 {
   "mcpServers": {
     "defai": {
-      "command": "npm",
-      "args": ["run", "mcp"],
-      "cwd": "/absolute/path/to/defai-bharat"
+      "command": "/opt/homebrew/bin/node",
+      "args": ["dist/src/mcp/server.js"],
+      "cwd": "/absolute/path/to/defai-bharat",
+      "env": {
+        "DEFAI_USER_ID": "<paste your UUID here>"
+      }
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/defai-bharat` with the actual path where you cloned the repo.
+Replace `/absolute/path/to/defai-bharat` with the actual path, and paste your UUID from Step 7 into `DEFAI_USER_ID`.
 
-**9c. Restart Claude Desktop.**
+**Quit Claude Desktop completely (Cmd+Q) and reopen it.**
 
-The 18 DeFAI tools now appear in Claude's tool palette. You can ask Claude things like:
-- "What are the best yields on BSC right now?"
-- "Deposit 0.05 BNB into the highest yield protocol"
-- "Check my portfolio"
+---
 
-**MCP with SSE transport (for web apps or remote agents):**
+### Step 10 — Test MCP in Claude
+
+Once Claude restarts, open a new conversation and try these in order:
+
+```
+ping the defai server
+→ pong — DeFAI MCP is alive on BSC Testnet (Chain 97)
+
+show my portfolio
+→ Your smart account address + empty positions (no wallet_setup needed!)
+
+scan all markets
+→ Live APYs from Venus/Beefy, BNB/USDT prices, funding rates, arb opportunities
+
+show my risk settings
+→ Default limits (max position $1000, etc.)
+```
+
+If you want to test a live deposit:
+1. Fund your smart account first (Step 8)
+2. Then ask Claude: `deposit 0.01 BNB to best yield`
+
+**MCP with SSE transport** (for web apps or remote agents):
 
 ```bash
 # Terminal 3: MCP server with SSE (HTTP on port 3001)
 npm run mcp:sse
 ```
 
-Then connect with a Bearer token from your API key.
+Then connect with your API key as a Bearer token.
 
 ---
 
-### Step 10 — Verify everything is working
+### Step 11 — Connect Telegram
+
+> **Live bot:** [@defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot) — or search `@defai_mcp_tele_bot` in Telegram. If you're running your own instance, use the bot you created with BotFather in Step 2c.
+
+1. Open [t.me/defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot) (or your own bot)
+2. Send `/start` — you'll see the welcome message
+3. Send `/connect <your-UUID>` (the UUID from Step 7)
+4. The bot replies: "Linked! Your Telegram is now connected to user..."
+5. Send `/portfolio` — should show the same data as MCP
+
+Try natural language — the bot uses a Groq LLM agent router:
+```
+/scan                                   — market data
+how much BNB can I earn in a week       — conversational reply from LLM
+deposit 0.05 BNB in best yield          — bot asks for confirmation, then executes
+```
+
+---
+
+### Step 12 — Log in to the dashboard
+
+1. Go back to [http://localhost:5173](http://localhost:5173)
+2. Click **Go to Login** (or switch to the Login tab)
+3. Paste your **API Key** (`dfai_k_...` from Step 7)
+4. Click **Login**
+
+Navigate through the sections:
+- **Portfolio** — smart account address, open positions, total value
+- **Trades** — trade history (everything done via MCP or Telegram appears here)
+- **Markets** — live APYs, prices, historical charts
+- **Settings** — alert configuration
+
+Everything done via MCP tools or Telegram is recorded in the same SQLite DB — it all shows up here in real-time.
+
+---
+
+### Step 13 — Verify everything is working
 
 ```bash
 # Backend health check
 curl http://localhost:3002/api/health
-# Expected: {"status":"ok","service":"defai-api","version":"1.0.0","chain":"BSC Testnet (97)"}
+# Expected: {"status":"ok","service":"defai-api","chain":"BSC Testnet (97)"}
 
 # Dashboard
 open http://localhost:5173
@@ -330,9 +365,30 @@ open http://localhost:5173
 # Telegram
 # Send /portfolio to your bot — should return wallet info
 
-# BSCScan — verify your Smart Account address has testnet BNB
-# https://testnet.bscscan.com/address/0xYourSmartAccountAddress
+# BSCScan
+# https://testnet.bscscan.com/address/<your-smart-account-address>
 ```
+
+---
+
+### How it all fits together
+
+```
+Dashboard Register (private key entered once, securely)
+         ↓
+     UUID + API Key
+    ↙              ↘
+Claude config      Telegram /connect <uuid>
+(DEFAI_USER_ID)
+    ↓                       ↓
+All MCP tools          All bot commands
+work automatically     work automatically
+    ↘              ↙
+  Same DB → Same portfolio
+  visible on Dashboard
+```
+
+Your private key never appears in chat, config files, or environment variables passed to Claude. It lives encrypted in the server's SQLite database, decrypted only at runtime using the server-side `ENCRYPTION_KEY`.
 
 ---
 
@@ -374,6 +430,9 @@ docker-compose up --build
 | Dashboard shows 401 | JWT token expired or wrong secret | Check `JWT_SECRET` in `.env` matches what the API started with |
 | Telegram bot not responding | Wrong token or username in `.env` | Double-check `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` |
 | Groq errors | Invalid API key | Verify `GROQ_API_KEY` at [console.groq.com](https://console.groq.com/) |
+| Telegram 400 "can't parse entities" | Underscores in position IDs treated as Markdown italic markers | Never use `parse_mode: 'Markdown'` for plain-text replies |
+| `/connect` UUID not found | UUID entered before dashboard registration | Register on dashboard first (Step 7), then use the UUID shown |
+| MCP tools need `wallet_setup` | `DEFAI_USER_ID` not set in Claude config | Add `"DEFAI_USER_ID": "<uuid>"` to the `env` section of your Claude config |
 
 ---
 
@@ -387,7 +446,7 @@ graph TB
     end
 
     subgraph Other["Other Transports"]
-        TG["Telegram Bot<br/>(Groq LLM Intent Parser)"]
+        TG["Telegram Bot<br/>(Agent Router — LLM tool-calling)"]
         API["REST API<br/>(Express + JWT)"]
         DASH["React Dashboard"]
     end

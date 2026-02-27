@@ -14,7 +14,7 @@ async function main() {
   // Ensure default user exists (backward compat with PRIVATE_KEY env)
   const defaultId = await userResolver.ensureDefaultUser();
   if (defaultId) {
-    await walletManager.activate(defaultId, 'defai-dev-default');
+    await walletManager.activate(defaultId);
     logger.info('Default user activated: %s', defaultId);
   }
 

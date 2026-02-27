@@ -3,7 +3,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express from 'express';
 import { z } from 'zod';
-import 'dotenv/config';
 import { logger } from '../utils/logger';
 import * as userResolver from '../core/userResolver';
 import * as walletManager from '../core/walletManager';
@@ -39,23 +38,26 @@ function getUserId(sessionId: string): string {
 // ─── TOOL: ping ───
 server.tool(
   'ping',
-  'Test connectivity to DeFAI MCP server',
+  'Test connectivity and check current wallet status',
   {},
-  async () => ({
-    content: [{ type: 'text' as const, text: 'pong — DeFAI MCP is alive on BSC Testnet (Chain 97)' }],
-  })
+  async () => {
+    const userId = sessionUsers.get('default');
+    const text = userId
+      ? `pong — DeFAI MCP is alive on BSC Testnet (Chain 97)\nWallet: auto-activated (user ${userId})\nAll tools ready — no wallet_setup needed.`
+      : `pong — DeFAI MCP is alive on BSC Testnet (Chain 97)\nNo wallet active. Call wallet_setup to connect.`;
+    return { content: [{ type: 'text' as const, text }] };
+  }
 );
 
 // ─── TOOL: wallet_setup ───
 server.tool(
   'wallet_setup',
-  'Register your wallet. Provide EOA private key and a passphrase to encrypt it at rest. Returns userId, smart account address, and API key. Save the userId for future sessions.',
+  'Register a new wallet or manually connect an existing one. NOTE: If DEFAI_USER_ID is set in your Claude config, your wallet is already auto-activated — you do NOT need to call this.',
   {
-    private_key: z.string().describe('EOA private key (hex, with or without 0x prefix)'),
-    passphrase: z.string().describe('Passphrase to encrypt your key at rest'),
+    private_key: z.string().optional().describe('EOA private key (hex). Required for new users. Not needed if providing existing_user_id.'),
     existing_user_id: z.string().optional().describe('If returning user, provide your userId to resume session'),
   },
-  async ({ private_key, passphrase, existing_user_id }, extra) => {
+  async ({ private_key, existing_user_id }, extra) => {
     try {
       const sessionId = (extra as any)?.sessionId || 'default';
 
@@ -68,7 +70,7 @@ server.tool(
           };
         }
 
-        const address = await walletManager.activate(existing_user_id, passphrase);
+        const address = await walletManager.activate(existing_user_id);
         sessionUsers.set(sessionId, existing_user_id);
 
         return {
@@ -85,14 +87,19 @@ server.tool(
         };
       }
 
-      // New user — create and activate
+      // New user — require private_key
+      if (!private_key) {
+        return {
+          content: [{ type: 'text' as const, text: 'Error: Either provide private_key (new user) or existing_user_id (returning user). Tip: Register on the dashboard to avoid sharing keys in chat.' }],
+        };
+      }
+
       const result = await userResolver.createUser({
         privateKey: private_key,
-        passphrase,
         label: 'mcp-stdio',
       });
 
-      await walletManager.activate(result.id, passphrase);
+      await walletManager.activate(result.id);
       sessionUsers.set(sessionId, result.id);
 
       return {
@@ -102,7 +109,6 @@ server.tool(
             `Wallet registered successfully!`,
             ``,
             `User ID: ${result.id}`,
-            `  (save this — use as existing_user_id for future sessions)`,
             `Smart Account: ${result.smartAccountAddress}`,
             `API Key: ${result.apiKey}`,
             `  (use for dashboard login or MCP SSE auth)`,
@@ -110,6 +116,8 @@ server.tool(
             ``,
             `All transactions are gasless via Pimlico.`,
             `Fund your smart account with testnet BNB: https://testnet.bnbchain.org/faucet-smart`,
+            ``,
+            `Tip: Add DEFAI_USER_ID=${result.id} to your Claude Desktop config to auto-resume next time.`,
           ].join('\n'),
         }],
       };
@@ -147,7 +155,7 @@ server.tool(
 // ─── TOOL: yield_deposit ───
 server.tool(
   'yield_deposit',
-  'Deposit tokens into the highest-APY protocol. Compares Venus, Beefy, DefiLlama and picks the best. Requires wallet_setup first.',
+  'Deposit tokens into the highest-APY protocol. Compares Venus, Beefy, DefiLlama and picks the best.',
   {
     token: z.string().describe('Token symbol (e.g., BNB, USDT)'),
     amount: z.string().describe('Amount to deposit (e.g., "0.1")'),
@@ -167,7 +175,7 @@ server.tool(
 // ─── TOOL: yield_rotate ───
 server.tool(
   'yield_rotate',
-  'Check if a better yield exists and rotate funds. Withdraws from current protocol, deposits into higher-APY one. Requires wallet_setup first.',
+  'Check if a better yield exists and rotate funds. Withdraws from current protocol, deposits into higher-APY one.',
   {
     position_id: z.string().describe('Position ID to rotate (from portfolio)'),
     min_improvement_bps: z.number().optional().describe('Minimum APY improvement in basis points to trigger rotation (default: 50)'),
@@ -186,7 +194,7 @@ server.tool(
 // ─── TOOL: portfolio ───
 server.tool(
   'portfolio',
-  'Full portfolio: balances, open positions, PnL, yield earned. Requires wallet_setup first.',
+  'Full portfolio: balances, open positions, PnL, yield earned.',
   {},
   async (_, extra) => {
     try {
@@ -202,7 +210,7 @@ server.tool(
 // ─── TOOL: trade_history ───
 server.tool(
   'trade_history',
-  'Get past trades with optional filters. Requires wallet_setup first.',
+  'Get past trades with optional filters.',
   {
     limit: z.number().optional().describe('Number of trades to return (default: 20)'),
     type: z.string().optional().describe('Filter by type: swap, deposit, withdraw, arb_buy, arb_sell, rotation'),
@@ -221,7 +229,7 @@ server.tool(
 // ─── TOOL: swap_tokens ───
 server.tool(
   'swap_tokens',
-  'Swap tokens via PancakeSwap V2 on BSC Testnet. Supports BNB↔USDT and token-to-token swaps. Requires wallet_setup first.',
+  'Swap tokens via PancakeSwap V2 on BSC Testnet. Supports BNB↔USDT and token-to-token swaps.',
   {
     from_token: z.string().describe('Token to sell (e.g., BNB, USDT)'),
     to_token: z.string().describe('Token to buy (e.g., USDT, BNB)'),
@@ -241,7 +249,7 @@ server.tool(
 // ─── TOOL: arb_execute ───
 server.tool(
   'arb_execute',
-  'Scan for cross-DEX arbitrage opportunities and execute the best one. Compares PancakeSwap, Thena, and BiSwap prices. Requires wallet_setup first.',
+  'Scan for cross-DEX arbitrage opportunities and execute the best one. Compares PancakeSwap, Thena, and BiSwap prices.',
   {
     opportunity_id: z.string().optional().describe('Specific opportunity ID to execute (from scan_markets arbitrage). Auto-selects best if omitted.'),
     max_slippage_bps: z.number().optional().describe('Maximum slippage in basis points (default: 50)'),
@@ -260,7 +268,7 @@ server.tool(
 // ─── TOOL: delta_neutral_open ───
 server.tool(
   'delta_neutral_open',
-  'Open a delta-neutral position: buy spot + virtual short. Earns yield from positive funding rates while hedging price risk. Requires wallet_setup first.',
+  'Open a delta-neutral position: buy spot + virtual short. Earns yield from positive funding rates while hedging price risk.',
   {
     token: z.string().describe('Token to trade (e.g., BNB, ETH)'),
     notional_usd: z.string().describe('Notional size in USD (e.g., "100")'),
@@ -280,7 +288,7 @@ server.tool(
 // ─── TOOL: delta_neutral_close ───
 server.tool(
   'delta_neutral_close',
-  'Close a delta-neutral position and realize PnL. Requires wallet_setup first.',
+  'Close a delta-neutral position and realize PnL.',
   {
     position_id: z.string().describe('Position ID to close (from portfolio)'),
   },
@@ -451,14 +459,15 @@ async function resolveDefaultUser() {
   const envUserId = userResolver.resolveFromEnv();
   if (envUserId) {
     sessionUsers.set('default', envUserId);
-    logger.info('Resolved user from DEFAI_USER_ID: %s', envUserId);
+    await walletManager.activate(envUserId);
+    logger.info('Resolved and activated user from DEFAI_USER_ID: %s', envUserId);
     return;
   }
 
   const defaultId = await userResolver.ensureDefaultUser();
   if (defaultId) {
     sessionUsers.set('default', defaultId);
-    await walletManager.activate(defaultId, 'defai-dev-default');
+    await walletManager.activate(defaultId);
   }
 }
 

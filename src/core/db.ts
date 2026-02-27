@@ -3,7 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger';
 
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+// __dirname is dist/src/core/ when compiled, src/core/ when running via ts-node.
+// Compiled: 3 levels up to project root. ts-node: use process.cwd() (always project root).
+const PROJECT_ROOT = process.env.PROJECT_ROOT ||
+  (__dirname.includes(`${path.sep}dist${path.sep}src${path.sep}`)
+    ? path.resolve(__dirname, '../../..')
+    : process.cwd());
 const DB_PATH = path.join(PROJECT_ROOT, 'data', 'defai.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 

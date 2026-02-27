@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { portfolio, trades, markets } from '../api/client';
+import { portfolio, trades, markets, arb } from '../api/client';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Link } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ export default function Dashboard() {
   const portfolioQ = useQuery({ queryKey: ['portfolio'], queryFn: portfolio.get });
   const tradesQ = useQuery({ queryKey: ['trades'], queryFn: () => trades.get(5) });
   const yieldsQ = useQuery({ queryKey: ['yields'], queryFn: markets.yields, refetchInterval: 30000 });
+  const arbQ = useQuery({ queryKey: ['arb'], queryFn: arb.session, refetchInterval: 15000 });
 
   const smartAccount = localStorage.getItem('defai_smartAccount') || '';
 
@@ -67,6 +68,46 @@ export default function Dashboard() {
           <p className="text-gray-500">Loading yield data...</p>
         )}
       </div>
+
+      {/* Active Arb Session */}
+      {arbQ.data?.session && (
+        <div className={`rounded-xl p-6 border ${
+          arbQ.data.session.status === 'active'
+            ? 'bg-green-900/20 border-green-700/50'
+            : 'bg-gray-900 border-gray-800'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-white">Arbitrage Bot</h2>
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+              arbQ.data.session.status === 'active'
+                ? 'bg-green-700/40 text-green-300'
+                : 'bg-gray-700 text-gray-400'
+            }`}>
+              {arbQ.data.session.status.toUpperCase()}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-gray-400">PnL</p>
+              <p className={`font-semibold ${arbQ.data.session.total_pnl_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ${arbQ.data.session.total_pnl_usd.toFixed(4)}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-400">Trades</p>
+              <p className="text-white font-semibold">{arbQ.data.session.trades_count}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Max Loss</p>
+              <p className="text-white font-semibold">${arbQ.data.session.max_loss_usd}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Expires</p>
+              <p className="text-white font-semibold text-xs">{new Date(arbQ.data.session.expires_at).toLocaleTimeString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent Trades */}
       <div className="bg-gray-900 rounded-xl p-6">

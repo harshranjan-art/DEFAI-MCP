@@ -150,7 +150,7 @@ sequenceDiagram
 
 ### Additional features beyond MCP
 
-- **Telegram bot** -- Natural language interface powered by Groq Llama 3.3 70B. Parses "Invest 0.1 BNB" into structured DeFi intents.
+- **Telegram bot** -- Conversational DeFi interface powered by a Groq Llama 3.3 70B agent router. Uses LLM tool-calling (15 tools, full MCP parity) to understand free-text commands, maintains 5-turn conversation history per user, and asks for confirmation before executing automated trading actions.
 - **REST API** -- JWT-authenticated endpoints for the React dashboard and programmatic access.
 - **React dashboard** -- Portfolio visualization, trade history, market data, risk settings.
 - **Gasless execution** -- All on-chain transactions via ERC-4337 Smart Accounts with Pimlico-sponsored gas.
@@ -182,7 +182,7 @@ flowchart LR
 
 1. **AI-first users (primary)** -- Claude Desktop and MCP-compatible AI users who want DeFi access through their AI assistant. DeFAI MCP is installed as a tool, and Claude manages their DeFi portfolio through natural conversation. Reach via MCP tool directories, Claude Desktop marketplace, and AI agent communities.
 2. **AI agent developers** -- Developers building autonomous agents who need composable DeFi building blocks. DeFAI's 18 MCP tools become Lego bricks for any AI-DeFi application. Reach via npm package and GitHub.
-3. **Telegram DeFi users** -- Crypto-native users who want automation via Telegram. Natural language commands powered by Groq LLM. Reach via BSC Telegram communities.
+3. **Telegram DeFi users** -- Crypto-native users who want automation via Telegram. Natural language commands powered by Groq LLM agent router. Live bot: [@defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot). Reach via BSC Telegram communities.
 4. **Non-technical crypto holders** -- Want yield without complexity. Zero wallet setup (AA handles it), zero gas management, plain English commands. Reach via simplified Telegram onboarding.
 
 ### Value to the BNB Chain ecosystem
@@ -227,7 +227,7 @@ flowchart LR
 
 - **Smart contract risk** -- Venus/PancakeSwap contract vulnerabilities. Mitigated by using battle-tested protocols.
 - **Oracle risk** -- Price feeds from CoinGecko/DexScreener could be manipulated. Mitigated by multi-source aggregation.
-- **Key custody** -- Encrypted keys stored in SQLite. Mitigated by AES-256-GCM + scrypt derivation.
+- **Key custody** -- Encrypted keys stored in SQLite. Mitigated by AES-256-GCM encryption with a server-side `ENCRYPTION_KEY`. Users register via the dashboard (private key entered once), receive a UUID, and never share their key with Claude or Telegram.
 - **MCP adoption** -- MCP is still early. Mitigated by supporting 4 transports (MCP, Telegram, API, Dashboard) so the agent works without MCP too.
 
 ### Roadmap

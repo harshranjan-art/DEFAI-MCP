@@ -29,7 +29,7 @@ A 3-5 minute walkthrough showing:
 
 ## Live Demo Access
 
-- **Telegram Bot**: [@defai_bharat_bot](https://t.me/defai_bharat_bot)
+- **Telegram Bot**: [@defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot)
 - **Dashboard**: _(deployment URL to be added)_
 - **API Health**: _(deployment URL)_/api/health
 - **Network**: BSC Testnet (Chain ID 97)

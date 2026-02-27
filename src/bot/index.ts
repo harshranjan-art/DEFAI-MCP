@@ -1,6 +1,6 @@
-import { Telegraf, Markup } from 'telegraf';
-import { parseIntent, generateConversationalReply } from './intentParser';
-import { pendingActions, awaitingAmountFor } from '../utils/storage';
+import { Telegraf } from 'telegraf';
+import { pendingActions } from '../utils/storage';
+import * as agentRouter from './agentRouter';
 import { logger } from '../utils/logger';
 import * as engine from '../core/engine';
 import * as userResolver from '../core/userResolver';
@@ -53,30 +53,42 @@ bot.start(async (ctx) => {
 
   await ctx.reply(
     `*Welcome to DeFAI!*\n\n` +
-    `To get started, you need to set up a wallet. ` +
-    `Use the MCP interface (Claude Desktop) with the \`wallet_setup\` tool to create your account, ` +
-    `then use \`/link <your_user_id>\` here to connect.\n\n` +
-    `Or send your private key as a DM to register directly (use /register).`,
+    `To get started:\n` +
+    `1. Register on the DeFAI dashboard (enter your private key once in a secure form)\n` +
+    `2. Copy your User ID from the registration page\n` +
+    `3. Send \`/connect <your_user_id>\` here to link your Telegram\n\n` +
+    `Already have a User ID? Use \`/connect <user_id>\` now.`,
     { parse_mode: 'Markdown' }
   );
 });
 
-// ─── /link — link existing MCP user to Telegram ───
-bot.command('link', async (ctx) => {
+// ─── /connect and /link — link existing user to Telegram via UUID ───
+async function handleConnect(ctx: any) {
   const parts = ctx.message.text.split(' ');
   const targetUserId = parts[1];
   if (!targetUserId) {
-    await ctx.reply('Usage: /link <user_id>\n\nGet your user_id from the MCP wallet_setup tool.');
+    await ctx.reply('Usage: /connect <user_id>\n\nGet your User ID from the dashboard Register page.');
     return;
   }
 
   try {
-    userResolver.linkTelegram(targetUserId, ctx.from.id);
-    await ctx.reply(`Linked! Your Telegram account is now connected to user ${targetUserId}.`);
+    const success = userResolver.linkTelegramByUserId(targetUserId, ctx.from.id);
+    if (!success) {
+      await ctx.reply('User not found. Make sure you registered on the dashboard first.');
+      return;
+    }
+    await walletManager.activate(targetUserId);
+    await ctx.reply(
+      `Linked! Your Telegram is now connected to user ${targetUserId}.\n` +
+      `Use /portfolio to check your positions or /help to see all commands.`
+    );
   } catch (e: any) {
     await ctx.reply(`Error: ${e.message}`);
   }
-});
+}
+
+bot.command('connect', handleConnect);
+bot.command('link', handleConnect);
 
 // ─── /scan — market data ───
 bot.command('scan', async (ctx) => {
@@ -112,7 +124,7 @@ bot.command('deposit', async (ctx) => {
   await ctx.reply(`Depositing ${amount} ${token} into best yield protocol...`);
   try {
     const result = await engine.yieldDeposit(userId, token, amount);
-    await ctx.reply(formatDepositResult(result), { parse_mode: 'Markdown' });
+    await ctx.reply(formatDepositResult(result));
   } catch (e: any) {
     logger.error('Bot /deposit error: %s', e.message);
     await ctx.reply(`Error: ${e.message}`);
@@ -150,23 +162,36 @@ bot.command('rotate', async (ctx) => {
     );
 
     const result = await engine.yieldRotate(userId, positionId);
-    await ctx.reply(formatDepositResult(result), { parse_mode: 'Markdown' });
+    await ctx.reply(formatDepositResult(result));
   } catch (e: any) {
     logger.error('Bot /rotate error: %s', e.message);
     await ctx.reply(`Error: ${e.message}`);
   }
 });
 
-// ─── /arb — arbitrage opportunities ───
+// ─── /arb — arbitrage status + opportunities ───
 bot.command('arb', async (ctx) => {
   const userId = resolveUser(ctx.from.id);
   if (!userId) return ctx.reply('Please /start first to set up your account.');
 
-  await ctx.reply('Scanning for arbitrage opportunities...');
   try {
-    const result = await engine.scanMarkets('arbitrage');
-    const text = result.length > 4000 ? result.slice(0, 4000) + '\n\n(truncated)' : result;
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    const session = engine.getArbSession(userId);
+    if (session) {
+      const status = session.status === 'active' ? 'ACTIVE' : session.status.toUpperCase();
+      const pnlSign = session.total_pnl_usd >= 0 ? '+' : '';
+      await ctx.reply(
+        `Arbitrage Bot — ${status}\n\n` +
+        `PnL: ${pnlSign}$${session.total_pnl_usd.toFixed(4)}\n` +
+        `Trades: ${session.trades_count}\n` +
+        `Max Loss: $${session.max_loss_usd}\n` +
+        `Expires: ${new Date(session.expires_at).toLocaleTimeString()}`
+      );
+    } else {
+      await ctx.reply('No active arbitrage session.\n\nScanning for opportunities...');
+      const result = await engine.scanMarkets('arbitrage');
+      const text = result.length > 4000 ? result.slice(0, 4000) + '\n\n(truncated)' : result;
+      await ctx.reply(text, { parse_mode: 'Markdown' });
+    }
   } catch (e: any) {
     logger.error('Bot /arb error: %s', e.message);
     await ctx.reply(`Error: ${e.message}`);
@@ -250,7 +275,7 @@ bot.command('help', async (ctx) => {
     `/portfolio — your positions and PnL\n` +
     `/trades — recent trade history\n\n` +
     `*Account*\n` +
-    `/link <user_id> — link MCP wallet to Telegram\n` +
+    `/connect <user_id> — link your dashboard account to Telegram\n` +
     `/start — welcome / registration`,
     { parse_mode: 'Markdown' }
   );
@@ -273,12 +298,11 @@ bot.action('cancel', async (ctx) => {
   await ctx.reply('Action cancelled.');
 });
 
-// ─── Main text handler — intent parsing + routing ───
+// ─── Main text handler — LLM agent router ───
 // IMPORTANT: Must be AFTER bot.command() registrations
 bot.on('text', async (ctx) => {
   const telegramId = ctx.from.id;
   const uid = resolveUser(telegramId);
-  const text = ctx.message.text;
 
   if (!uid) {
     await ctx.reply('Please use /start first to set up your account.');
@@ -286,111 +310,16 @@ bot.on('text', async (ctx) => {
   }
 
   try {
-    // Handle pending amount requests
-    const awaiting = awaitingAmountFor.get(uid);
-    if (awaiting) {
-      const amountMatch = text.match(/(\d+\.?\d*)/);
-      if (amountMatch) {
-        awaitingAmountFor.delete(uid);
-        const amount = amountMatch[1];
-
-        if (awaiting === 'YIELD') {
-          await ctx.reply(`Depositing ${amount} BNB...`);
-          const result = await engine.yieldDeposit(uid, 'BNB', amount);
-          await ctx.reply(formatDepositResult(result), { parse_mode: 'Markdown' });
-          return;
-        } else if (awaiting === 'SWAP') {
-          await ctx.reply('Please specify what to swap. Example: "Swap 0.01 BNB to USDT"');
-          return;
-        }
-      }
-      awaitingAmountFor.delete(uid);
-    }
-
-    await ctx.reply('Processing...');
-    const intent = await parseIntent(text, uid);
-
-    switch (intent.type) {
-      case 'YIELD': {
-        if (!intent.amount) {
-          awaitingAmountFor.set(uid, 'YIELD');
-          await ctx.reply('How much BNB do you want to deposit? (e.g., "0.1")');
-          break;
-        }
-        await ctx.reply(`Depositing ${intent.amount} ${intent.token || 'BNB'}...`);
-        const depositResult = await engine.yieldDeposit(uid, intent.token || 'BNB', String(intent.amount));
-        await ctx.reply(formatDepositResult(depositResult), { parse_mode: 'Markdown' });
-        break;
-      }
-
-      case 'SWAP': {
-        if (!intent.amount || !intent.token || !intent.toToken) {
-          await ctx.reply('Please specify your swap. Example: "Swap 0.01 BNB to USDT"');
-          break;
-        }
-        await ctx.reply(`Swapping ${intent.amount} ${intent.token} to ${intent.toToken}...`);
-        const swapResult = await engine.swapTokens(uid, intent.token, intent.toToken, String(intent.amount));
-        await ctx.reply(swapResult.message);
-        break;
-      }
-
-      case 'ARB': {
-        await ctx.reply('Scanning for arbitrage opportunities...');
-        const arbResult = await engine.scanMarkets('arbitrage');
-        const text = arbResult.length > 4000 ? arbResult.slice(0, 4000) + '\n\n(truncated)' : arbResult;
-        await ctx.reply(text, { parse_mode: 'Markdown' });
-        break;
-      }
-
-      case 'SCAN': {
-        await ctx.reply('Scanning markets...');
-        const scanResult = await engine.scanMarkets('all');
-        const scanText = scanResult.length > 4000 ? scanResult.slice(0, 4000) + '\n\n(truncated)' : scanResult;
-        await ctx.reply(scanText, { parse_mode: 'Markdown' });
-        break;
-      }
-
-      case 'PORTFOLIO': {
-        const portfolio = engine.getPortfolio(uid);
-        if (portfolio.positions.length === 0) {
-          await ctx.reply('No active positions. Use /deposit to start earning yield.');
-        } else {
-          const lines = [`Total Value: $${portfolio.totalValueUsd.toFixed(2)}`, ''];
-          for (const p of portfolio.positions) {
-            lines.push(`${p.amount} ${p.token} on ${p.protocol} (${p.entry_apy?.toFixed(2)}% APY)`);
-          }
-          await ctx.reply(lines.join('\n'));
-        }
-        break;
-      }
-
-      case 'TRADES': {
-        const trades = engine.getTradeHistory(uid, { limit: 5 });
-        if (trades.length === 0) {
-          await ctx.reply('No trades yet.');
-        } else {
-          const lines = trades.map(t => `${t.type}: ${t.from_amount} ${t.from_token} → ${t.to_amount} ${t.to_token}`);
-          await ctx.reply(lines.join('\n'));
-        }
-        break;
-      }
-
-      case 'RISK':
-        await ctx.reply('Risk management settings are coming soon. Use the MCP interface for now.');
-        break;
-
-      case 'DELTA_NEUTRAL':
-        await ctx.reply('Delta-neutral strategies are coming soon. Use the MCP interface for now.');
-        break;
-
-      default: {
-        const reply = await generateConversationalReply(text, uid);
-        await ctx.reply(reply);
-      }
+    const reply = await agentRouter.route(uid, ctx.message.text);
+    // Telegram max message length is 4096 chars
+    if (reply.length > 4000) {
+      await ctx.reply(reply.slice(0, 4000) + '\n\n(truncated)');
+    } else {
+      await ctx.reply(reply);
     }
   } catch (e: any) {
     logger.error('Bot: error handling text from user %s: %s', uid, e.message);
-    await ctx.reply(`Something went wrong. Please try again.`);
+    await ctx.reply('Something went wrong. Please try again.');
   }
 });
 

@@ -20,7 +20,7 @@ graph TB
     end
 
     subgraph AI["AI Layer"]
-        LLM["Groq Llama 3.3 70B<br/>Intent Parser"]
+        LLM["Groq Llama 3.3 70B<br/>Agent Router (tool-calling)"]
     end
 
     subgraph Core["Core Engine"]
@@ -146,7 +146,8 @@ When Claude Desktop starts, it launches the MCP server process, discovers all 18
 |---|---|---|
 | **MCP Server** (`src/mcp/server.ts`) | @modelcontextprotocol/sdk | **18 tools for AI agents** (stdio + SSE) |
 | **Core Engine** (`src/core/engine.ts`) | TypeScript | Single orchestrator — MCP + all transports call this |
-| **Telegram Bot** (`src/bot/index.ts`) | Telegraf + Groq LLM | Natural language commands via chat |
+| **Telegram Bot** (`src/bot/index.ts`) | Telegraf | Command handling; free-text routed through agentRouter |
+| **Agent Router** (`src/bot/agentRouter.ts`) | Groq Llama 3.3 70B (tool-calling) | LLM decides which of 15 tools to call; maintains 5-turn conversation history per user |
 | **REST API** (`src/api/server.ts`) | Express 5 + JWT | Dashboard backend + programmatic access |
 | **Dashboard** (`dashboard/`) | React + Vite + Tailwind | Web UI for portfolio, trades, markets |
 | **Wallet** (`src/wallet/pimlico.ts`) | permissionless + Pimlico | ERC-4337 Smart Account management |
@@ -212,6 +213,45 @@ flowchart TD
     M --> N[SmartAccountClient ready]
 ```
 
+### UUID-Based Identity — Privacy-Preserving Registration
+
+The recommended registration flow ensures the user's private key is entered exactly once in a secure dashboard form, then never appears again in any config file, chat message, or environment variable passed to Claude.
+
+```
+Dashboard Register page (HTTPS, password-masked input)
+         │
+         ▼
+Server: encrypt(privateKey, ENCRYPTION_KEY) → store in SQLite
+         │
+         ▼
+Return: { uuid, apiKey, smartAccountAddress }
+         │
+    ┌────┴─────────────────┐
+    ▼                       ▼
+Claude Desktop config    Telegram /connect <uuid>
+DEFAI_USER_ID=<uuid>
+    │                       │
+    ▼                       ▼
+MCP server reads uuid    Bot links telegramId → uuid
+→ looks up user in DB    → looks up user in DB
+→ decrypt key with       → decrypt key with
+  server ENCRYPTION_KEY    server ENCRYPTION_KEY
+→ activate wallet        → activate wallet
+    │                       │
+    └────────────┬───────────┘
+                 ▼
+         All transports share
+         the same userId/wallet
+         → same portfolio visible
+           on dashboard
+```
+
+**Key properties:**
+- **Private key never leaves the server** — stored AES-256-GCM encrypted, decrypted only at wallet activation
+- **UUID is the only credential shared with Claude/Telegram** — safe to put in config files
+- **Server-side `ENCRYPTION_KEY`** in `.env` is the master encryption key — user never handles a passphrase
+- **Single identity across all transports** — MCP, Telegram, REST API, and dashboard all resolve to the same `userId` and share the same SQLite-backed portfolio
+
 ### On-chain vs off-chain
 
 | Component | Execution | Data source |
@@ -224,7 +264,7 @@ flowchart TD
 | DefiLlama yields | Data only (no execution) | DefiLlama API (real APYs) |
 | Delta-neutral short | Virtual tracking | Binance Futures API (real funding rates) |
 | Position tracking | Off-chain | SQLite database |
-| Intent parsing | Off-chain | Groq Llama 3.3 70B |
+| Intent parsing (Telegram) | Off-chain | Groq Llama 3.3 70B agent router with LLM tool-calling |
 | Account Abstraction | **Real on-chain** | Pimlico bundler + paymaster |
 
 ### Security
@@ -451,6 +491,8 @@ Bot: Recent trades:
 | MCP server breaks | Logger writing to stdout | pino must use stderr (fd 2). Check `src/utils/logger.ts` |
 | Bot ignores commands | Handler registration order | Commands must be registered before `bot.on('text')` |
 | Wallet init hangs | Singleton `_initPromise` stale | Restart the process |
+| Telegram 400 "can't parse entities" | Underscores in position IDs (e.g. `pos_abc123`) treated as Markdown italic markers | Never pass `{ parse_mode: 'Markdown' }` for plain-text replies |
+| AgentRouter crashes on null args | Groq sends `"null"` for parameterless tools | Parse args as `JSON.parse(args) ?? {}` |
 | Insufficient BNB | Smart account needs testnet BNB | Fund via [BSC Testnet Faucet](https://www.bnbchain.org/en/testnet-faucet) |
 
 ### Demo user journey

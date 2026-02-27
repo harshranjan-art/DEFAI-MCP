@@ -23,7 +23,7 @@ cd dashboard && npm install && npm run dev   # Vite dev server on port 5173
 | `PRIVATE_KEY`       | EOA private key (hex). Auto-creates default user on first startup. |
 | `PIMLICO_API_KEY`   | Pimlico bundler + paymaster API key      |
 | `TELEGRAM_BOT_TOKEN`| Telegraf bot token from BotFather        |
-| `GROQ_API_KEY`      | Groq API key (Llama 3.3 70B for intent parsing) |
+| `GROQ_API_KEY`      | Groq API key (Llama 3.3 70B for Telegram agent router) |
 | `BSC_TESTNET_RPC`   | (Optional) Custom BSC Testnet RPC        |
 | `JWT_SECRET`        | JWT signing secret for dashboard API     |
 | `DEFAI_USER_ID`     | (Optional) Resume MCP session as existing user |
@@ -69,8 +69,9 @@ src/index.ts                    ← Entry: starts bot + crons + API server
 │       └── setAlerts.ts, linkTransport.ts
 │
 ├── bot/
-│   ├── index.ts                ← Telegraf bot (commands route through engine)
-│   └── intentParser.ts         ← Groq LLM intent classification (9 types)
+│   ├── index.ts                ← Telegraf bot (commands + text handler via agentRouter)
+│   ├── agentRouter.ts          ← LLM tool-calling agent (Groq Llama 3.3 70B, 15 tools, 5-turn history)
+│   └── intentParser.ts         ← (deprecated — replaced by agentRouter)
 │
 ├── api/
 │   ├── server.ts               ← Express REST API (port 3002)
@@ -110,7 +111,14 @@ dashboard/                      ← React SPA (Vite + Tailwind + React Query)
 ### Core Engine (engine.ts)
 - **Single orchestrator**: MCP tools, Telegram commands, and API routes ALL call `engine.*()` methods. Never call strategies or adapters directly from transports.
 - **Risk checks**: Engine calls `riskManager.check()` before every strategy execution.
-- Methods: `scanMarkets`, `yieldDeposit`, `yieldRotate`, `swapTokens`, `arbExecute`, `deltaNeutralOpen`, `deltaNeutralClose`, `configureRisk`, `setAlert`, `getPortfolio`, `getTradeHistory`
+- Methods: `scanMarkets`, `yieldDeposit`, `yieldRotate`, `swapTokens`, `arbExecute`, `deltaNeutralOpen`, `deltaNeutralClose`, `configureRisk`, `setAlert`, `getPortfolio`, `getTradeHistory`, `getArbSession`
+
+### Telegram Agent Router (agentRouter.ts)
+- **LLM tool-calling layer**: Free-text messages from Telegram users go through Groq Llama 3.3 70B with 15 registered tools (full MCP parity). The LLM decides which tool to invoke based on intent.
+- **Conversation history**: Per-user in-memory history capped at 10 messages (5 turns). Enables multi-turn context ("actually make it 0.1 BNB").
+- **Idempotent wallet activation**: `walletManager.activate()` is called before every wallet-requiring tool — it's a no-op if already active, so no "wallet not activated" errors after server restart.
+- **Null-safe args**: Tool arguments parsed as `JSON.parse(args) ?? {}` to handle parameterless tool calls.
+- **Confirmations for destructive actions**: System prompt instructs LLM to ask for `start_arb_session` parameters (duration, max loss, slippage) before executing — even though defaults exist.
 
 ### Multi-User Identity
 - Users stored in SQLite with encrypted private keys (AES-256-GCM)
@@ -184,3 +192,6 @@ dashboard/                      ← React SPA (Vite + Tailwind + React Query)
 - **Command handlers before `bot.on('text')`**: Telegraf routes commands to text handler if registered after.
 - **npm ERESOLVE with ox**: permissionless and viem have conflicting ox peer deps. Use `--legacy-peer-deps`.
 - **Singleton wallet init**: `_initPromise` caches init. Restart process if wallet config changes.
+- **Telegram Markdown parse errors**: Underscores in position IDs (e.g. `pos_abc123`) are treated as italic markers by Telegram Markdown v1. Never use `{ parse_mode: 'Markdown' }` for plain-text replies — omit it entirely.
+- **AgentRouter null args crash**: Groq sends `"null"` as arguments for parameterless tools (e.g. `get_portfolio`). Always parse as `JSON.parse(args) ?? {}` — never `JSON.parse(args)` directly.
+- **LLM uses defaults silently for trading actions**: Add explicit system prompt rules to require user confirmation before `start_arb_session` — the LLM will otherwise proceed with documented defaults without asking.

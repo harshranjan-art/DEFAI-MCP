@@ -5,7 +5,7 @@ import { entryPoint07Address } from 'viem/account-abstraction';
 import { createSmartAccountClient } from 'permissionless';
 import { toSimpleSmartAccount } from 'permissionless/accounts';
 import { createPimlicoClient } from 'permissionless/clients/pimlico';
-import { decrypt } from '../wallet/encryption';
+import { decrypt, getServerKey } from '../wallet/encryption';
 import * as dbOps from './db';
 import { ADDRESSES, getPimlicoUrl } from '../utils/constants';
 import { logger } from '../utils/logger';
@@ -21,16 +21,16 @@ const activeSessions = new Map<string, WalletSession>();
 
 /**
  * Activate a user's wallet for transacting.
- * Decrypts private key, initializes SmartAccountClient, caches in memory.
+ * Decrypts private key using server-side ENCRYPTION_KEY, initializes SmartAccountClient, caches in memory.
  */
-export async function activate(userId: string, passphrase: string): Promise<Address> {
+export async function activate(userId: string): Promise<Address> {
   const existing = activeSessions.get(userId);
   if (existing) return existing.address;
 
   const user = dbOps.getUser(userId);
   if (!user) throw new Error(`User ${userId} not found`);
 
-  const privateKey = decrypt(user.encrypted_private_key, passphrase);
+  const privateKey = decrypt(user.encrypted_private_key, getServerKey());
   const pk = privateKey.startsWith('0x')
     ? (privateKey as `0x${string}`)
     : (`0x${privateKey}` as `0x${string}`);

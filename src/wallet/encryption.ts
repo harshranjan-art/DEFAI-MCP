@@ -4,6 +4,14 @@ const ALGO = 'aes-256-gcm';
 const SALT = 'defai-bnb-salt-v1';
 
 /**
+ * Server-side encryption key for encrypting/decrypting private keys.
+ * Defaults to 'defai-dev-default' for backward compat with existing DB entries.
+ */
+export function getServerKey(): string {
+  return process.env.ENCRYPTION_KEY || 'defai-dev-default';
+}
+
+/**
  * Encrypt a plaintext string with AES-256-GCM.
  * Returns "iv:authTag:ciphertext" (all hex-encoded).
  */

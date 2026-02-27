@@ -8,20 +8,19 @@ const router = Router();
 
 /**
  * POST /api/auth/register
- * Body: { private_key, passphrase }
+ * Body: { private_key }
  * Returns: { userId, apiKey, smartAccountAddress, jwt }
  */
 router.post('/register', async (req, res) => {
   try {
-    const { private_key, passphrase } = req.body;
-    if (!private_key || !passphrase) {
-      res.status(400).json({ error: 'private_key and passphrase are required.' });
+    const { private_key } = req.body;
+    if (!private_key) {
+      res.status(400).json({ error: 'private_key is required.' });
       return;
     }
 
     const result = await userResolver.createUser({
       privateKey: private_key,
-      passphrase,
       label: 'api-register',
     });
 
