@@ -305,7 +305,15 @@ npm run dev
 
 # Terminal 2: Start dashboard
 npm run dashboard
+
+# Terminal 3 (optional): Start MCP server for Claude Desktop (stdio)
+npm run mcp
+
+# Terminal 3 (alternative): Start MCP server with SSE transport (web agents / remote)
+npm run mcp:sse
 ```
+
+> **MCP note**: `npm run mcp` uses stdio transport — it must run as a subprocess launched by Claude Desktop (configured in `claude_desktop_config.json`), not as a standalone terminal process. Use `npm run mcp:sse` for standalone HTTP access on port 3001.
 
 ### Docker (one command)
 
