@@ -388,11 +388,34 @@ open http://localhost:5173  # (or :3002 in Docker)
 # 4. MCP (Claude Desktop)
 # Add to claude_desktop_config.json:
 # { "mcpServers": { "defai": { "command": "npm", "args": ["run", "mcp"], "cwd": "/path/to/defai-bharat" } } }
+ eg: {
+  "preferences": {
+    "coworkScheduledTasksEnabled": true,
+    "sidebarMode": "chat",
+    "coworkWebSearchEnabled": false
+  },
+  "mcpServers": {
+    "defai": {
+      "command": "/opt/homebrew/bin/node",
+      "args": [
+        "--require",
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/loadEnv.js",
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/dist/src/mcp/server.js"
+      ],
+      "env": {
+        "DEFAI_USER_ID": "<your dashboard generated user id from private key>"
+      }
+    }
+  }
+}
+
 ```
 
 ---
 
 ## 3. Demo Guide
+
+> **Note**: First of all visit the dashboard and generate a user id using your Private key, and after that use that user id and follow the instructions to set up Claude MCP and Telegram Bot.
 
 ### Access points
 
