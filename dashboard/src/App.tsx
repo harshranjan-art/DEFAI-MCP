@@ -8,6 +8,7 @@ import Portfolio from './pages/Portfolio';
 import Trades from './pages/Trades';
 import Markets from './pages/Markets';
 import Settings from './pages/Settings';
+import Alerts from './pages/Alerts';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/trades" element={<Trades />} />
             <Route path="/markets" element={<Markets />} />
+            <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

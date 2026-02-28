@@ -5,7 +5,9 @@ export function executeArbAutoStart(
   userId: string,
   durationHours: number,
   maxLossUsd: number,
-  maxSlippageBps: number = 50,
+  // POC MODE: default slippage tolerance lowered to 1 bps — auto-arb will fire on any detectable spread.
+  // PRODUCTION: change back to 50 bps (0.5%) so the bot only trades when spread genuinely covers fees
+  maxSlippageBps: number = 1,
 ): string {
   const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
   const sessionId = uuid();

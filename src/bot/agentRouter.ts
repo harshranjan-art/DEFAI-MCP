@@ -217,6 +217,22 @@ const TOOLS: Groq.Chat.ChatCompletionTool[] = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'send_tokens',
+      description: 'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address',
+      parameters: {
+        type: 'object',
+        required: ['token', 'amount', 'to_address'],
+        properties: {
+          token: { type: 'string', description: 'Token to send: BNB, USDT, or WBNB' },
+          amount: { type: 'string', description: 'Amount to send, e.g. "0.01"' },
+          to_address: { type: 'string', description: 'Recipient wallet address (0x...)' },
+        },
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT = [
@@ -224,11 +240,12 @@ const SYSTEM_PROMPT = [
   'You help with: yield farming, token swaps (PancakeSwap), arbitrage, portfolio tracking, and market data.',
   '',
   'When the user wants to perform an action or fetch data, call the appropriate tool.',
-  'When the user asks what you can do, list your capabilities: yield deposit, yield rotation, token swaps (PancakeSwap), arbitrage (scan/execute/auto-bot), delta-neutral positions, portfolio view, trade history, market data, risk config, alerts.',
+  'When the user asks what you can do, list your capabilities: yield deposit, yield rotation, token swaps (PancakeSwap), arbitrage (scan/execute/auto-bot), delta-neutral positions, send tokens to an address, portfolio view, trade history, market data, risk config, alerts.',
   'For general chat or questions without a clear action, respond conversationally — 2-3 sentences max.',
   'Never call a tool with guessed parameters. If an amount or token is missing, ask the user first.',
   'For start_arb_session: always ask the user for duration (hours), max loss (USD), and max slippage (bps) before calling the tool — even though defaults exist, this is an automated trading bot and user must confirm parameters.',
   'For yield_deposit and swap_tokens: always ask for the missing amount or token before calling.',
+  'For send_tokens: always confirm the exact recipient address and amount with the user before executing — transfers are irreversible.',
   'Never mention the underlying AI model.',
 ].join('\n');
 
@@ -320,7 +337,9 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
     case 'start_arb_session': {
       const durationHours = Number(args.duration_hours) || 1;
       const maxLossUsd = Number(args.max_loss_usd) || 5;
-      const maxSlippageBps = Number(args.max_slippage_bps) || 50;
+      // POC MODE: fallback default lowered to 1 bps when user doesn't specify slippage.
+      // PRODUCTION: change back to || 50 (0.5% default slippage tolerance)
+      const maxSlippageBps = Number(args.max_slippage_bps) || 1;
       return executeArbAutoStart(userId, durationHours, maxLossUsd, maxSlippageBps);
     }
 
@@ -353,6 +372,12 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
 
     case 'get_alerts': {
       return executeGetAlerts(userId);
+    }
+
+    case 'send_tokens': {
+      await walletManager.activate(userId);
+      const result = await engine.sendTokens(userId, args.token, args.amount, args.to_address);
+      return result.message + (result.explorerUrl ? `\nTx: ${result.explorerUrl}` : '');
     }
 
     default:

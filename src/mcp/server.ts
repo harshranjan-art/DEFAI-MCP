@@ -13,6 +13,7 @@ import { executeYieldRotate } from './tools/yieldRotate';
 import { executePortfolio } from './tools/portfolio';
 import { executeTradeHistory } from './tools/tradeHistory';
 import { executeSwapTokens } from './tools/swapTokens';
+import { executeSendTokens } from './tools/sendTokens';
 import { executeArbExecute } from './tools/arbExecute';
 import { executeDeltaNeutralOpen, executeDeltaNeutralClose } from './tools/deltaNeutral';
 import { executeRiskConfig } from './tools/riskConfig';
@@ -239,6 +240,27 @@ server.tool(
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
       const result = await executeSwapTokens(userId, from_token, to_token, amount);
+      return { content: [{ type: 'text' as const, text: result }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
+    }
+  }
+);
+
+// ─── TOOL: send_tokens ───
+server.tool(
+  'send_tokens',
+  'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address on BSC Testnet. Gasless via Pimlico paymaster.',
+  {
+    token: z.string().describe('Token to send: BNB, USDT, or WBNB'),
+    amount: z.string().describe('Amount to send (e.g., "0.01")'),
+    to_address: z.string().describe('Recipient wallet address (0x...)'),
+  },
+  async ({ token, amount, to_address }, extra) => {
+    try {
+      const userId = getUserId((extra as any)?.sessionId || 'default');
+      await walletManager.activate(userId);
+      const result = await executeSendTokens(userId, token, amount, to_address);
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };

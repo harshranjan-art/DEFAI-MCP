@@ -47,7 +47,9 @@ export async function scan(token: string = 'BNB', quote: string = 'USDT', amount
 
       const spreadBps = ((expensive.effectivePrice - cheap.effectivePrice) / cheap.effectivePrice) * 10000;
 
-      if (spreadBps > 10) { // > 0.1% spread
+      // POC MODE: detection threshold set to 0 — surfaces every price difference, even tiny ones.
+      // PRODUCTION: change back to `spreadBps > 10` (0.1% minimum to filter out noise)
+      if (spreadBps >= 0) {
         opportunities.push({
           id: `arb_${Date.now()}_${i}_${j}`,
           token,
@@ -57,7 +59,9 @@ export async function scan(token: string = 'BNB', quote: string = 'USDT', amount
           sellPrice: expensive.effectivePrice,
           spreadBps: Math.round(spreadBps),
           estimatedProfitUsd: (expensive.effectivePrice - cheap.effectivePrice) * parseFloat(amount),
-          viable: spreadBps > 30, // > 0.3% to cover slippage
+          // POC MODE: everything is marked viable so execution is never blocked by this flag.
+          // PRODUCTION: change back to `spreadBps > 30` (0.3% ensures spread covers real swap fees + slippage)
+          viable: true,
         });
       }
     }
@@ -74,11 +78,14 @@ export async function scan(token: string = 'BNB', quote: string = 'USDT', amount
 export async function execute(
   userId: string,
   opportunityId?: string,
-  maxSlippageBps: number = 50,
+  // POC MODE: default lowered to 1 bps so any detectable spread triggers execution.
+  // PRODUCTION: change back to 50 bps (0.5%) — spread must cover DEX swap fees (~0.25% each leg)
+  maxSlippageBps: number = 1,
 ): Promise<{ success: boolean; message: string; profitUsd?: number }> {
   // Re-scan to get fresh opportunities
   const opps = await scan();
-  // Filter by the actual slippage tolerance passed in, not the hardcoded viable flag
+  // POC MODE: filter passes everything with spread > 1 bps (near-zero bar).
+  // PRODUCTION: this should be > 50 bps to ensure the trade is actually profitable after fees
   const viable = opps.filter(o => o.spreadBps > maxSlippageBps);
 
   if (viable.length === 0) {

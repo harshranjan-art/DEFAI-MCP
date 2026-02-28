@@ -4,6 +4,7 @@
  * This centralizes validation, logging, and error handling.
  */
 
+import { encodeFunctionData, isAddress, parseEther } from 'viem';
 import { logger } from '../utils/logger';
 import * as positionTracker from './positionTracker';
 import * as tradeLogger from './tradeLogger';
@@ -15,6 +16,7 @@ import { pancakeSwapAdapter } from '../adapters/pancakeswap';
 import * as walletManager from './walletManager';
 import * as dbOps from './db';
 import { executeScanMarkets } from '../mcp/tools/scanMarkets';
+import { ADDRESSES, ERC20_ABI } from '../utils/constants';
 import type { DepositResult, RotationPlan, StrategyResult } from './strategy/types';
 import type { RiskConfig } from './riskManager';
 import type { Portfolio } from './positionTracker';
@@ -111,6 +113,84 @@ export async function swapTokens(
     protocol: 'PancakeSwap',
     txHash: txResult.txHash,
   };
+}
+
+// ─── Send Tokens ───
+
+const TOKEN_ADDRESSES: Record<string, `0x${string}` | 'native'> = {
+  BNB: 'native',
+  WBNB: ADDRESSES.WBNB_TESTNET,
+  USDT: ADDRESSES.USDT_TESTNET,
+};
+
+export async function sendTokens(
+  userId: string,
+  token: string,
+  amount: string,
+  toAddress: string,
+): Promise<{ success: boolean; message: string; txHash?: string; explorerUrl?: string }> {
+  logger.info('Engine: sendTokens(%s, %s %s → %s)', userId, amount, token, toAddress);
+
+  if (!isAddress(toAddress)) {
+    return { success: false, message: `Invalid recipient address: ${toAddress}` };
+  }
+
+  const tokenUpper = token.toUpperCase();
+  const tokenAddress = TOKEN_ADDRESSES[tokenUpper];
+  if (!tokenAddress) {
+    return { success: false, message: `Unsupported token: ${token}. Supported: ${Object.keys(TOKEN_ADDRESSES).join(', ')}` };
+  }
+
+  const wallet = walletManager.getClient(userId);
+  if (!wallet) {
+    return { success: false, message: 'Wallet not activated. Call wallet_setup first.' };
+  }
+
+  try {
+    let txHash: string;
+
+    if (tokenAddress === 'native') {
+      // Native BNB transfer — no data needed
+      txHash = await wallet.client.sendTransaction({
+        to: toAddress as `0x${string}`,
+        value: parseEther(amount),
+      });
+    } else {
+      // ERC-20 transfer
+      const data = encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: 'transfer',
+        args: [toAddress as `0x${string}`, parseEther(amount)],
+      });
+      txHash = await wallet.client.sendTransaction({
+        to: tokenAddress,
+        data,
+      });
+    }
+
+    await wallet.publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+
+    tradeLogger.logTrade({
+      user_id: userId,
+      type: 'transfer',
+      protocol: 'direct',
+      from_token: tokenUpper,
+      to_token: tokenUpper,
+      from_amount: amount,
+      to_amount: amount,
+      price_usd: 0,
+      tx_hash: txHash,
+    });
+
+    return {
+      success: true,
+      message: `Sent ${amount} ${tokenUpper} to ${toAddress}`,
+      txHash,
+      explorerUrl: `https://testnet.bscscan.com/tx/${txHash}`,
+    };
+  } catch (e: any) {
+    return { success: false, message: `Transfer failed: ${e.message}` };
+  }
 }
 
 // ─── Arbitrage ───

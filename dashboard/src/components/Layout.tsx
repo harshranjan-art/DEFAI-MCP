@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { path: '/portfolio', label: 'Portfolio' },
   { path: '/trades', label: 'Trades' },
   { path: '/markets', label: 'Markets' },
+  { path: '/alerts', label: 'Alerts' },
   { path: '/settings', label: 'Settings' },
 ];
 

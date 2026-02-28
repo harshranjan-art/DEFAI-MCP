@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 export interface Trade {
   id: string;
   user_id: string;
-  type: 'swap' | 'deposit' | 'withdraw' | 'arb_buy' | 'arb_sell' | 'rotation' | 'delta_spot_buy' | 'delta_spot_sell' | 'delta_short_open' | 'delta_short_close';
+  type: 'swap' | 'deposit' | 'withdraw' | 'arb_buy' | 'arb_sell' | 'rotation' | 'delta_spot_buy' | 'delta_spot_sell' | 'delta_short_open' | 'delta_short_close' | 'transfer';
   protocol: string;
   from_token?: string;
   to_token?: string;

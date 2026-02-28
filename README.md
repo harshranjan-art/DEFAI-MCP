@@ -255,7 +255,20 @@ Your Smart Account needs a small amount of testnet BNB to execute on-chain trans
 
 ---
 
-### Step 9 — Configure Claude Desktop with your UUID
+### Step 9 — Build and configure Claude Desktop
+
+> **How MCP works with Claude Desktop:** You do **not** run `npm run mcp` manually. Claude Desktop reads the config below and **spawns the MCP server itself** as a background child process when it opens — and kills it when it closes. You just need the compiled output to exist.
+
+First, compile the TypeScript:
+
+```bash
+npm run build
+# This creates dist/ — Claude Desktop loads dist/src/mcp/server.js
+```
+
+> Re-run `npm run build` any time you update the code and want Claude Desktop to pick up the changes.
+
+---
 
 Open your Claude Desktop config:
 
@@ -330,14 +343,14 @@ If you want to test a live deposit:
 1. Fund your smart account first (Step 8)
 2. Then ask Claude: `deposit 0.01 BNB to best yield`
 
-**MCP with SSE transport** (for web apps or remote agents):
+**MCP with SSE transport** (optional — for web apps or remote AI agents only):
 
 ```bash
-# Terminal 3: MCP server with SSE (HTTP on port 3001)
+# Terminal 3 (optional): MCP server with SSE transport (HTTP on port 3001)
 npm run mcp:sse
 ```
 
-Then connect with your API key as a Bearer token.
+Then connect with your API key as a Bearer token. This is **not needed** for normal Claude Desktop use.
 
 ---
 
@@ -419,15 +432,28 @@ Your private key never appears in chat, config files, or environment variables p
 
 ### All available commands
 
-| Command | What it starts | Port |
-|---|---|---|
-| `npm run dev` | Bot + crons + API server (all-in-one) | 3002 |
-| `npm run mcp` | MCP server — stdio transport (for Claude Desktop) | stdin/stdout |
-| `npm run mcp:sse` | MCP server — SSE transport (for web agents) | 3001 |
-| `npm run api` | REST API only | 3002 |
-| `npm run bot` | Telegram bot only | — |
-| `npm run dashboard` | React dashboard (Vite dev server) | 5173 |
-| `npm run build` | Compile TypeScript to `dist/` | — |
+| Command | What it starts | Port | When to use |
+|---|---|---|---|
+| `npm run dev` | Bot + crons + API server (all-in-one) | 3002 | **Always** — your main backend process |
+| `npm run build` | Compile TypeScript to `dist/` | — | **Before first Claude Desktop use**, and after any code changes |
+| `npm run mcp` | MCP server — stdio transport | stdin/stdout | Manual debugging only — **not needed for Claude Desktop** (it auto-starts from `dist/`) |
+| `npm run mcp:sse` | MCP server — SSE transport | 3001 | Web-based MCP clients or remote AI agents |
+| `npm run api` | REST API only | 3002 | When you want the API without the bot/crons |
+| `npm run bot` | Telegram bot only | — | When you want the bot without the API |
+| `npm run dashboard` | React dashboard (Vite dev server) | 5173 | Local dashboard development |
+
+**Normal local setup uses only two terminals:**
+
+```bash
+# Terminal 1 — backend (bot + crons + API)
+npm run dev
+
+# Terminal 2 — dashboard UI
+cd dashboard && npm run dev
+
+# One-time (or after code changes) — compile for Claude Desktop
+npm run build
+```
 
 ---
 

@@ -76,7 +76,7 @@ export default function Dashboard() {
             ? 'bg-green-900/20 border-green-700/50'
             : 'bg-gray-900 border-gray-800'
         }`}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-white">Arbitrage Bot</h2>
             <span className={`text-xs font-medium px-2 py-1 rounded-full ${
               arbQ.data.session.status === 'active'
@@ -86,6 +86,15 @@ export default function Dashboard() {
               {arbQ.data.session.status.toUpperCase()}
             </span>
           </div>
+
+          {/* Data source disclaimer */}
+          <p className="text-xs text-gray-500 mb-3">
+            Prices scraped live from{' '}
+            <span className="text-gray-400 font-medium">DexScreener</span> (BSC mainnet) +{' '}
+            <span className="text-gray-400 font-medium">CoinGecko</span> — real market data.
+            {' '}PancakeSwap trades execute on-chain (BSC Testnet);{' '}
+            Thena &amp; BiSwap execution is simulated (no testnet contracts).
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-gray-400">PnL</p>
