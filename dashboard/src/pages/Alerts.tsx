@@ -100,7 +100,7 @@ export default function Alerts() {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <AlertTypeBadge type={n.type ?? 'alert'} />
+                    <AlertTypeBadge type={n.alert_type ?? 'alert'} />
                     {n.created_at && (
                       <span className="font-mono text-xs text-gray-500">
                         {new Date(n.created_at).toLocaleString()}

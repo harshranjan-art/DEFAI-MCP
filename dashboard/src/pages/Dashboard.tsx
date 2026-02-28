@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { portfolio, trades, markets, arb } from '../api/client';
+import { portfolio, trades, markets, arb, alerts } from '../api/client';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Link } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ export default function Dashboard() {
   const tradesQ = useQuery({ queryKey: ['trades'], queryFn: () => trades.get(5) });
   const yieldsQ = useQuery({ queryKey: ['yields'], queryFn: markets.yields, refetchInterval: 30000 });
   const arbQ = useQuery({ queryKey: ['arb'], queryFn: arb.session, refetchInterval: 15000 });
+  const alertsQ = useQuery({ queryKey: ['alerts-unread'], queryFn: alerts.unread, refetchInterval: 30000 });
 
   const smartAccount = localStorage.getItem('defai_smartAccount') || '';
 
@@ -151,6 +152,36 @@ export default function Dashboard() {
           <p className="font-mono text-sm text-gray-500">No trades yet.</p>
         )}
       </div>
+
+      {/* Recent Alerts */}
+      <div className="border-2 border-black bg-white p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl tracking-wide uppercase">Recent Alerts</h2>
+          <Link
+            to="/alerts"
+            className="font-mono text-xs font-bold border-2 border-black px-3 py-1.5 hover:bg-[#F5C518] transition-all"
+          >
+            VIEW ALL →
+          </Link>
+        </div>
+        {alertsQ.data?.notifications && alertsQ.data.notifications.length > 0 ? (
+          <div className="space-y-2">
+            {alertsQ.data.notifications.slice(0, 5).map((n: any, i: number) => (
+              <div key={n.id ?? i} className="flex items-start gap-3 p-3 border border-black bg-[#F5F5F5]">
+                <AlertTypeBadge type={n.alert_type ?? 'alert'} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono text-xs text-black line-clamp-2">{n.message}</p>
+                  {n.created_at && (
+                    <p className="font-mono text-xs text-gray-500 mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="font-mono text-sm text-gray-500">No new alerts.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -161,5 +192,20 @@ function StatCard({ title, value, accent }: { title: string; value: string; acce
       <p className="font-mono text-xs font-bold uppercase text-gray-500">{title}</p>
       <p className="font-display text-3xl mt-1 text-black">{value}</p>
     </div>
+  );
+}
+
+const ALERT_META: Record<string, { label: string }> = {
+  apy_drop: { label: 'APY DROP' },
+  arb_opportunity: { label: 'ARB OPPORTUNITY' },
+  position_health: { label: 'POSITION HEALTH' },
+};
+
+function AlertTypeBadge({ type }: { type: string }) {
+  const meta = ALERT_META[type];
+  return (
+    <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black text-[#F5C518]">
+      {meta?.label ?? type?.toUpperCase() ?? 'ALERT'}
+    </span>
   );
 }

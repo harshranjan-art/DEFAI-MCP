@@ -76,6 +76,14 @@ export function startAutoArbExecutor() {
                 newCount, session.id, result.profitUsd.toFixed(4), newPnl.toFixed(4),
               );
 
+              // Notify user of each executed trade
+              const timeLeftMin = Math.max(0, Math.round((expires.getTime() - Date.now()) / 60000));
+              await dispatchAlert(
+                session.user_id,
+                'arb_opportunity',
+                `Auto-arb Trade #${newCount} executed\n\n${result.message}\n\nCumulative P&L: $${newPnl >= 0 ? '+' : ''}${newPnl.toFixed(4)} | Time left: ${timeLeftMin}m`,
+              );
+
               // Stop if loss limit crossed mid-cycle
               if (newPnl < -session.max_loss_usd) {
                 dbOps.updateAutoArbSession(session.id, { status: 'stopped' });
