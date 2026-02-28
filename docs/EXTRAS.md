@@ -8,11 +8,11 @@ Demo videos and slide decks are **mostly for presentation purposes**. As a techn
 ---
 
 ## Demo Video
+use 1.7x (recommended)
+> Link: https://www.loom.com/share/555b31adb226424493125bf3d9377c64 
 
-> Link: _(to be added)_
-
-A 3-5 minute walkthrough showing:
-1. Starting the agent with `docker-compose up`
+A  walkthrough showing:
+1. setting up the claude mcp client
 2. Registering via Telegram bot
 3. Scanning markets for best yields
 4. Depositing into Venus via natural language
@@ -23,24 +23,6 @@ A 3-5 minute walkthrough showing:
 
 ## Slide Deck
 
-> Link: _(to be added)_
+> Link: https://drive.google.com/file/d/1I4-ad5yMAexXbIRFhkjBis-j0kE65enQ/view
 
 ---
-
-## Live Demo Access
-
-- **Telegram Bot**: [@defai_mcp_tele_bot](https://t.me/defai_mcp_tele_bot)
-- **Dashboard**: _(deployment URL to be added)_
-- **API Health**: _(deployment URL)_/api/health
-- **Network**: BSC Testnet (Chain ID 97)
-
----
-
-## Screenshots
-
-_(to be added)_
-
-- Dashboard overview with portfolio chart
-- Telegram bot conversation showing yield deposit
-- MCP tool execution in Claude Desktop
-- Market scanner results
