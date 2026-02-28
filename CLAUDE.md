@@ -62,10 +62,10 @@ src/index.ts                    ← Entry: starts bot + crons + API server
 │
 ├── mcp/
 │   ├── server.ts               ← MCP server (stdio + SSE transport)
-│   └── tools/                  ← 12 MCP tools (all call engine.*)
+│   └── tools/                  ← 19 MCP tools (all call engine.*)
 │       ├── scanMarkets.ts, yieldDeposit.ts, yieldRotate.ts
-│       ├── portfolio.ts, tradeHistory.ts, swapTokens.ts
-│       ├── arbExecute.ts, deltaNeutral.ts, riskConfig.ts
+│       ├── portfolio.ts, tradeHistory.ts, swapTokens.ts, sendTokens.ts
+│       ├── arbExecute.ts, arbAuto.ts (start/stop/status), deltaNeutral.ts, riskConfig.ts
 │       └── setAlerts.ts, linkTransport.ts
 │
 ├── bot/
@@ -111,10 +111,10 @@ dashboard/                      ← React SPA (Vite + Tailwind + React Query)
 ### Core Engine (engine.ts)
 - **Single orchestrator**: MCP tools, Telegram commands, and API routes ALL call `engine.*()` methods. Never call strategies or adapters directly from transports.
 - **Risk checks**: Engine calls `riskManager.check()` before every strategy execution.
-- Methods: `scanMarkets`, `yieldDeposit`, `yieldRotate`, `swapTokens`, `arbExecute`, `deltaNeutralOpen`, `deltaNeutralClose`, `configureRisk`, `setAlert`, `getPortfolio`, `getTradeHistory`, `getArbSession`
+- Methods: `scanMarkets`, `yieldDeposit`, `yieldRotate`, `swapTokens`, `sendTokens`, `arbExecute`, `deltaNeutralOpen`, `deltaNeutralClose`, `configureRisk`, `setAlert`, `getPortfolio`, `getTradeHistory`, `getArbSession`
 
 ### Telegram Agent Router (agentRouter.ts)
-- **LLM tool-calling layer**: Free-text messages from Telegram users go through Groq Llama 3.3 70B with 15 registered tools (full MCP parity). The LLM decides which tool to invoke based on intent.
+- **LLM tool-calling layer**: Free-text messages from Telegram users go through Groq Llama 3.3 70B with 16 registered tools (functional MCP parity — excludes setup/meta tools like ping, wallet_setup, link_telegram). The LLM decides which tool to invoke based on intent.
 - **Conversation history**: Per-user in-memory history capped at 10 messages (5 turns). Enables multi-turn context ("actually make it 0.1 BNB").
 - **Idempotent wallet activation**: `walletManager.activate()` is called before every wallet-requiring tool — it's a no-op if already active, so no "wallet not activated" errors after server restart.
 - **Null-safe args**: Tool arguments parsed as `JSON.parse(args) ?? {}` to handle parameterless tool calls.
@@ -165,7 +165,7 @@ dashboard/                      ← React SPA (Vite + Tailwind + React Query)
 | Testnet USDT                | `0x337610d27c682E347C9cD60BD4b3b107C9d34dDd` |
 | Pimlico Paymaster           | `0x0000000000000039cd5e8aE05257CE51C473ddd1` |
 
-## MCP Tools (12)
+## MCP Tools (16)
 
 | Tool                  | Description                                        |
 |-----------------------|----------------------------------------------------|
@@ -175,6 +175,7 @@ dashboard/                      ← React SPA (Vite + Tailwind + React Query)
 | `yield_deposit`       | Deposit to best yield protocol                     |
 | `yield_rotate`        | Rotate to higher APY                               |
 | `swap_tokens`         | PancakeSwap V2 token swap                          |
+| `send_tokens`         | Transfer tokens to external address                |
 | `arb_execute`         | Cross-DEX arbitrage                                |
 | `delta_neutral_open`  | Open hedged position                               |
 | `delta_neutral_close` | Close hedged position + PnL                        |

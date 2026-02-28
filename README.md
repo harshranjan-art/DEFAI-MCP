@@ -5,9 +5,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue.svg)](https://www.typescriptlang.org/)
 [![BNB Chain](https://img.shields.io/badge/BNB%20Chain-Testnet-F0B90B.svg)](https://www.bnbchain.org/)
 [![ERC-4337](https://img.shields.io/badge/ERC--4337-Gasless-purple.svg)](https://eips.ethereum.org/EIPS/eip-4337)
-[![MCP](https://img.shields.io/badge/MCP-18%20Tools-blue.svg)](https://modelcontextprotocol.io/)
+[![MCP](https://img.shields.io/badge/MCP-19%20Tools-blue.svg)](https://modelcontextprotocol.io/)
 
-**The first MCP server that gives AI agents real DeFi execution on BNB Chain.** 18 MCP tools for yield farming, cross-DEX arbitrage, and delta-neutral strategies — all gasless via ERC-4337 Account Abstraction.
+**The first MCP server that gives AI agents real DeFi execution on BNB Chain.** 19 MCP tools for yield farming, cross-DEX arbitrage, token transfers, and delta-neutral strategies — all gasless via ERC-4337 Account Abstraction.
 
 ---
 
@@ -34,7 +34,7 @@ This isn't a chatbot wrapper. It's a **full DeFi execution layer** exposed as MC
 
 ---
 
-## 18 MCP Tools — Full DeFi Toolkit for AI Agents
+## 19 MCP Tools — Full DeFi Toolkit for AI Agents
 
 | Tool | What it does |
 |---|---|
@@ -44,6 +44,7 @@ This isn't a chatbot wrapper. It's a **full DeFi execution layer** exposed as MC
 | `yield_deposit` | Deposit into highest-APY protocol (auto-selects best) |
 | `yield_rotate` | Rotate position to higher APY when rates shift |
 | `swap_tokens` | PancakeSwap V2 swap (BNB, USDT, any pair) |
+| `send_tokens` | Transfer tokens to external address (BNB, USDT, WBNB) |
 | `arb_execute` | Scan cross-DEX spreads and execute best arbitrage |
 | `arb_auto_start` | Start autonomous arb bot (scans every 30s for N hours) |
 | `arb_auto_stop` | Stop the autonomous arb session |
@@ -491,7 +492,7 @@ docker-compose up --build
 
 ```mermaid
 graph TB
-    subgraph MCP_Layer["MCP Server (18 tools)"]
+    subgraph MCP_Layer["MCP Server (19 tools)"]
         STDIO["stdio Transport<br/>(Claude Desktop)"]
         SSE["SSE Transport<br/>(Web / AI Agents)"]
     end
