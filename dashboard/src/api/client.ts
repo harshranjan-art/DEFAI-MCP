@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('defai_jwt');
@@ -75,6 +75,7 @@ export const markets = {
 // Arb
 export const arb = {
   session: () => request<{ session: any | null }>('/arb'),
+  executions: (limit = 50) => request<{ executions: any[] }>(`/arb/executions?limit=${limit}`),
 };
 
 // Alerts

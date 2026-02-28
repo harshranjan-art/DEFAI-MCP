@@ -23,7 +23,7 @@ async function fetchVenus(): Promise<YieldOpportunity[]> {
   try {
     const res = await fetch(API_URLS.VENUS, { signal: AbortSignal.timeout(8000) });
     const json = await res.json() as any;
-    const markets: any[] = json?.data?.markets ?? json?.markets ?? [];
+    const markets: any[] = json?.result ?? json?.data?.markets ?? json?.markets ?? [];
 
     for (const m of markets) {
       const apy = parseFloat(m.supplyApy || '0');

@@ -34,7 +34,7 @@ export async function dispatch(
   // Send via Telegram if linked
   if (user.telegram_id && botRef) {
     try {
-      await botRef.telegram.sendMessage(user.telegram_id, message, { parse_mode: 'Markdown' });
+      await botRef.telegram.sendMessage(user.telegram_id, message);
       logger.info('Alert sent via Telegram to user %s (telegram_id: %d)', userId, user.telegram_id);
     } catch (e: any) {
       logger.error('Telegram alert failed for user %s: %s', userId, e.message);

@@ -118,7 +118,7 @@ The MCP server (`src/mcp/server.ts`) is the core component that differentiates D
     "defai": {
       "command": "npm",
       "args": ["run", "mcp"],
-      "cwd": "/path/to/defai-mcp"
+      "cwd": "/path/to/defai-bharat"
     }
   }
 }
@@ -313,8 +313,8 @@ cp .env.example .env
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-org>/defai-mcp.git
-cd defai-mcp
+git clone https://github.com/<your-org>/defai-bharat.git
+cd defai-bharat
 
 # Install dependencies (--legacy-peer-deps needed for permissionless/viem peer conflict)
 npm install --legacy-peer-deps
@@ -387,7 +387,8 @@ open http://localhost:5173  # (or :3002 in Docker)
 
 # 4. MCP (Claude Desktop)
 # Add to claude_desktop_config.json:
-# { "mcpServers": { "defai": { "command": "npm", "args": ["run", "mcp"], "cwd": "/path/to/defai-mcp" } } }
+# { "mcpServers": { "defai": { "command": "npm", "args": ["run", "mcp"], "cwd": "/path/to/defai-bharat" } } }
+
  eg: {
   "preferences": {
     "coworkScheduledTasksEnabled": true,
@@ -399,8 +400,8 @@ open http://localhost:5173  # (or :3002 in Docker)
       "command": "/opt/homebrew/bin/node",
       "args": [
         "--require",
-        "/Users/user/Documents/LEARNING/breaking down /defai-mcp/loadEnv.js",
-        "/Users/user/Documents/LEARNING/breaking down /defai-mcp/dist/src/mcp/server.js"
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/loadEnv.js",
+        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/dist/src/mcp/server.js"
       ],
       "env": {
         "DEFAI_USER_ID": "<your dashboard generated user id from private key>"

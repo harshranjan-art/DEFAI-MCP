@@ -126,7 +126,7 @@ export const PANCAKE_ROUTER_V2_ABI = [
 // ─── API Endpoints ───
 
 export const API_URLS = {
-  VENUS: 'https://api.venus.io/api/governance/venus',
+  VENUS: 'https://api.venus.io/markets?chainId=56',
   PANCAKESWAP_FARMS: 'https://farms.pancakeswap.finance/v3/chains/56/apr',
   BEEFY_APY: 'https://api.beefy.finance/apy',
   BEEFY_VAULTS: 'https://api.beefy.finance/vaults',

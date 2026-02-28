@@ -9,6 +9,7 @@ import Trades from './pages/Trades';
 import Markets from './pages/Markets';
 import Settings from './pages/Settings';
 import Alerts from './pages/Alerts';
+import ArbExecutions from './pages/ArbExecutions';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/trades" element={<Trades />} />
             <Route path="/markets" element={<Markets />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/arb" element={<ArbExecutions />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

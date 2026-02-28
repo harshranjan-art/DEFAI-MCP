@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { path: '/trades', label: 'Trades' },
   { path: '/markets', label: 'Markets' },
   { path: '/alerts', label: 'Alerts' },
+  { path: '/arb', label: 'Arb Executions' },
   { path: '/settings', label: 'Settings' },
 ];
 
@@ -67,7 +68,7 @@ export default function Layout() {
               >
                 <span>{item.label.toUpperCase()}</span>
                 {hasUnread && (
-                  <span className="ml-auto bg-black text-[#F5C518] text-xs font-bold px-1.5 py-0.5 border border-current rounded">
+                  <span className="ml-auto bg-black text-[#F5C518] text-xs font-bold px-1.5 py-0.5">
                     {unreadCount}
                   </span>
                 )}
