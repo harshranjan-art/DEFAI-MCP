@@ -468,7 +468,6 @@ docker-compose up --build
 # API + Dashboard on http://localhost:3002
 ```
 
-> **Note**: MCP stdio transport cannot run in Docker — it requires a direct stdin/stdout connection to Claude Desktop. Run `npm run mcp` locally for Claude Desktop integration.
 
 ---
 
