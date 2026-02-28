@@ -82,7 +82,10 @@ If Node.js is not installed, download it from [nodejs.org](https://nodejs.org/) 
 
 ---
 
-### Step 2 — Get your API keys
+### Step 2 — Get your API keys 
+
+#### OR Skip Step 2 by justing visiting this doc link to just copy paste api from there (for judges)
+https://docs.google.com/document/d/1ECsU_Vd0UP4Ed10Ru9_j2QfHIsIdnQiTM_1gE1yed44/edit?usp=sharing
 
 You need **four external API keys** before you can run the project. Get them now, in any order.
 
