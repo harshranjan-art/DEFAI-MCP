@@ -37,39 +37,30 @@ This isn't a chatbot wrapper. It's a **full DeFi execution layer** exposed as MC
 ## User Journey
 
 ```mermaid
-journey
-    title DeFAI MCP — End-to-End User Experience
-    section Discover
-      Find DeFAI MCP on GitHub / Hackathon: 5: User
-      Read README, understand MCP + BNB Chain: 4: User
-    section Install
-      Install Node.js 18+: 3: User
-      Clone repo + npm install: 3: User
-      Get API keys (Pimlico, Groq, Telegram): 3: User
-      Configure .env file: 3: User
-    section Register
-      Start backend (npm run dev): 5: User
-      Open dashboard (localhost:5173): 5: User
-      Paste private key → get UUID + API Key: 5: User, Dashboard
-      Smart Account created on BSC Testnet: 5: Dashboard
-    section Fund
-      Copy Smart Account address: 4: User
-      Request testnet BNB from faucet: 4: User
-      Confirm balance on BSCScan: 4: User
-    section Use MCP
-      Build project (npm run build): 4: User
-      Add defai block to Claude Desktop config: 4: User
-      Restart Claude Desktop: 3: User
-      Ask Claude to scan markets / deposit / run arb: 5: User, Claude
-      Claude calls MCP tools, executes on-chain: 5: Claude, MCP
-    section Use Telegram
-      Connect Telegram bot with /connect UUID: 5: User
-      Send natural language commands to bot: 5: User
-      Bot routes via LLM → executes strategy: 5: Bot
-    section Monitor
-      Log in to dashboard with API Key: 5: User
-      View portfolio, positions, trade history: 5: User, Dashboard
-      Receive APY drop / arb alerts via Telegram: 5: Dashboard, Bot
+flowchart TD
+    A("🔍 **DISCOVER**\nFind DeFAI MCP on GitHub / BNBChain Hackathon\nRead README — understand MCP + BNB Chain")
+
+    B("⚙️ **INSTALL**\nInstall Node.js 18+ · Clone repo\nnpm install --legacy-peer-deps\nGet API keys: Pimlico · Groq · Telegram BotFather\nConfigure .env file")
+
+    C("📝 **REGISTER**\nnpm run dev  →  backend starts on :3002\nOpen dashboard: localhost:5173\nPaste private key  →  Smart Account created on BSC Testnet\nReceive: UUID · API Key · Smart Account address")
+
+    D("💰 **FUND**\nCopy Smart Account address from dashboard\nRequest testnet BNB from BSC Faucet\nVerify balance on testnet.bscscan.com")
+
+    E("🤖 **USE MCP WITH CLAUDE**\nnpm run build  →  compiles to dist/\nAdd defai block to claude_desktop_config.json\nRestart Claude Desktop\nAsk Claude: scan markets · deposit · run arbitrage\nClaude calls MCP tools  →  real on-chain execution")
+
+    F("💬 **USE TELEGRAM**\n/connect UUID  →  bot linked to your account\nSend natural language: 'deposit 0.05 BNB'\nLLM agent router  →  tool call  →  execution")
+
+    G("📊 **MONITOR ON DASHBOARD**\nLog in with API Key\nView: portfolio · positions · PnL · trade history\nReceive alerts: APY drops · arb opportunities · position health")
+
+    A --> B --> C --> D --> E --> F --> G
+
+    style A fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style B fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style C fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style D fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style E fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style F fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
+    style G fill:#1a1a1a,color:#F5C518,stroke:#F5C518,stroke-width:2px
 ```
 
 ---
