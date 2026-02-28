@@ -1,7 +1,7 @@
-import { encodeFunctionData, parseEther } from 'viem';
+import { encodeFunctionData, parseEther, formatUnits } from 'viem';
 import type { Address } from 'viem';
 import type { ProtocolAdapter, TxResult } from './types';
-import { ADDRESSES, VENUS_VBNB_ABI, API_URLS } from '../utils/constants';
+import { ADDRESSES, VENUS_VBNB_ABI, ERC20_ABI, API_URLS } from '../utils/constants';
 import { logger } from '../utils/logger';
 
 class VenusAdapter implements ProtocolAdapter {
@@ -95,11 +95,29 @@ class VenusAdapter implements ProtocolAdapter {
   }
 
   /**
-   * Get BNB balance of an address.
+   * Get token balance — native BNB or ERC-20.
    */
   async getBalance(token: string, address: Address, publicClient: any): Promise<string> {
-    const balance = await publicClient.getBalance({ address });
-    return (Number(balance) / 1e18).toString();
+    const sym = token.toUpperCase();
+
+    // Native BNB
+    if (sym === 'BNB' || sym === 'WBNB') {
+      const balance = await publicClient.getBalance({ address });
+      return formatUnits(balance, 18);
+    }
+
+    // ERC-20 tokens
+    const tokenAddresses: Record<string, Address> = {
+      USDT: ADDRESSES.USDT_TESTNET,
+    };
+    const tokenAddr = tokenAddresses[sym];
+    if (!tokenAddr) return '0';
+
+    const [raw, decimals] = await Promise.all([
+      publicClient.readContract({ address: tokenAddr, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }) as Promise<bigint>,
+      publicClient.readContract({ address: tokenAddr, abi: ERC20_ABI, functionName: 'decimals' }) as Promise<number>,
+    ]);
+    return formatUnits(raw, Number(decimals));
   }
 }
 

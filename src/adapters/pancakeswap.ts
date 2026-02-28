@@ -1,8 +1,40 @@
-import { encodeFunctionData, parseEther } from 'viem';
+import { encodeFunctionData, parseEther, parseUnits } from 'viem';
 import type { Address } from 'viem';
 import type { ProtocolAdapter, TxResult, PriceQuote } from './types';
-import { ADDRESSES, PANCAKE_ROUTER_V2_ABI, API_URLS } from '../utils/constants';
+import { ADDRESSES, PANCAKE_ROUTER_V2_ABI, ERC20_ABI, API_URLS } from '../utils/constants';
 import { logger } from '../utils/logger';
+
+const SLIPPAGE_BPS = 500; // 5% — testnet pools have thin liquidity
+
+/** Read decimals from the token contract (cached per address). */
+const decimalsCache = new Map<string, number>();
+async function getTokenDecimals(tokenAddr: Address, publicClient: any): Promise<number> {
+  if (decimalsCache.has(tokenAddr)) return decimalsCache.get(tokenAddr)!;
+  try {
+    const d = await publicClient.readContract({ address: tokenAddr, abi: ERC20_ABI, functionName: 'decimals' });
+    decimalsCache.set(tokenAddr, Number(d));
+    return Number(d);
+  } catch {
+    return 18;
+  }
+}
+
+/** Call getAmountsOut and apply slippage to produce amountOutMin. */
+async function calcAmountOutMin(amountIn: bigint, path: Address[], publicClient: any): Promise<bigint> {
+  try {
+    const amounts = await publicClient.readContract({
+      address: ADDRESSES.PANCAKESWAP_V2_ROUTER,
+      abi: PANCAKE_ROUTER_V2_ABI,
+      functionName: 'getAmountsOut',
+      args: [amountIn, path],
+    }) as bigint[];
+    const expected = amounts[amounts.length - 1];
+    return (expected * BigInt(10000 - SLIPPAGE_BPS)) / BigInt(10000);
+  } catch (e: any) {
+    logger.warn('getAmountsOut failed, swap will proceed without minimum: %s', e.message);
+    return BigInt(0);
+  }
+}
 
 class PancakeSwapAdapter implements ProtocolAdapter {
   name = 'PancakeSwap';
@@ -20,11 +52,13 @@ class PancakeSwapAdapter implements ProtocolAdapter {
       if (from.toUpperCase() === 'BNB') {
         const toAddr = this.getTokenAddress(to);
         const path = [ADDRESSES.WBNB_TESTNET, toAddr];
+        const amountIn = parseEther(amount);
+        const amountOutMin = await calcAmountOutMin(amountIn, path, publicClient);
 
         const data = encodeFunctionData({
           abi: PANCAKE_ROUTER_V2_ABI,
           functionName: 'swapExactETHForTokens',
-          args: [BigInt(0), path, toAddress, BigInt(deadline)],
+          args: [amountOutMin, path, toAddress, BigInt(deadline)],
         });
 
         logger.info('PancakeSwap: swapping %s BNB → %s...', amount, to);
@@ -49,11 +83,14 @@ class PancakeSwapAdapter implements ProtocolAdapter {
       if (to.toUpperCase() === 'BNB') {
         const fromAddr = this.getTokenAddress(from);
         const path = [fromAddr, ADDRESSES.WBNB_TESTNET];
+        const decimals = await getTokenDecimals(fromAddr, publicClient);
+        const amountIn = parseUnits(amount, decimals);
+        const amountOutMin = await calcAmountOutMin(amountIn, path, publicClient);
 
         const data = encodeFunctionData({
           abi: PANCAKE_ROUTER_V2_ABI,
           functionName: 'swapExactTokensForETH',
-          args: [parseEther(amount), BigInt(0), path, toAddress, BigInt(deadline)],
+          args: [amountIn, amountOutMin, path, toAddress, BigInt(deadline)],
         });
 
         logger.info('PancakeSwap: swapping %s %s → BNB...', amount, from);
@@ -77,11 +114,14 @@ class PancakeSwapAdapter implements ProtocolAdapter {
       const fromAddr = this.getTokenAddress(from);
       const toAddr = this.getTokenAddress(to);
       const path = [fromAddr, ADDRESSES.WBNB_TESTNET, toAddr];
+      const decimals = await getTokenDecimals(fromAddr, publicClient);
+      const amountIn = parseUnits(amount, decimals);
+      const amountOutMin = await calcAmountOutMin(amountIn, path, publicClient);
 
       const data = encodeFunctionData({
         abi: PANCAKE_ROUTER_V2_ABI,
         functionName: 'swapExactTokensForTokens',
-        args: [parseEther(amount), BigInt(0), path, toAddress, BigInt(deadline)],
+        args: [amountIn, amountOutMin, path, toAddress, BigInt(deadline)],
       });
 
       logger.info('PancakeSwap: swapping %s %s → %s...', amount, from, to);
