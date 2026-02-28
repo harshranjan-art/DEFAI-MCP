@@ -104,7 +104,7 @@ You need **four external API keys** before you can run the project. Get them now
 
 1. Open Telegram and search for **@BotFather**
 2. Send `/newbot`
-3. Choose a name (e.g. `DeFAI Bharat`) and a username (e.g. `defai_bharat_bot` — must end in `bot`)
+3. Choose a name (e.g. `DeFAI MCP`) and a username (e.g. `defai_mcp_bot` — must end in `bot`)
 4. BotFather sends you a token — it looks like `123456789:ABCdef...`
 5. Save both the **token** and the **@username** (without the `@`)
 
@@ -131,8 +131,8 @@ openssl rand -base64 32
 ### Step 3 — Clone the repository and install dependencies
 
 ```bash
-git clone https://github.com/<your-org>/defai-bharat.git
-cd defai-bharat
+git clone https://github.com/<your-org>/defai-mcp.git
+cd defai-mcp
 
 # Install backend dependencies
 # --legacy-peer-deps is required due to a viem/permissionless peer conflict
@@ -272,7 +272,7 @@ Replace (or add) the `defai` block with:
     "defai": {
       "command": "/opt/homebrew/bin/node",
       "args": ["dist/src/mcp/server.js"],
-      "cwd": "/absolute/path/to/defai-bharat",
+      "cwd": "/absolute/path/to/defai-mcp",
       "env": {
         "DEFAI_USER_ID": "<paste your UUID here>"
       }
@@ -291,8 +291,8 @@ eg: {
       "command": "/opt/homebrew/bin/node",
       "args": [
         "--require",
-        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/loadEnv.js",
-        "/Users/user/Documents/LEARNING/breaking down /defai-bharat/dist/src/mcp/server.js"
+        "/Users/user/Documents/LEARNING/breaking down /defai-mcp/loadEnv.js",
+        "/Users/user/Documents/LEARNING/breaking down /defai-mcp/dist/src/mcp/server.js"
       ],
       "env": {
         "DEFAI_USER_ID": "<your dashboard generated user id from private key>"
@@ -302,7 +302,7 @@ eg: {
 }
 ```
 
-Replace `/absolute/path/to/defai-bharat` with the actual path, and paste your UUID from Step 7 into `DEFAI_USER_ID`.
+Replace `/absolute/path/to/defai-mcp` with the actual path, and paste your UUID from Step 7 into `DEFAI_USER_ID`.
 
 **Quit Claude Desktop completely (Cmd+Q) and reopen it.**
 

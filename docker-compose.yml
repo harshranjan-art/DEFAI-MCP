@@ -1,10 +1,9 @@
-version: '3.8'
-
 services:
   defai:
     build: .
     ports:
-      - "3002:3002"
+      - "3002:3002"   # REST API + Dashboard
+      - "3001:3001"   # MCP SSE transport (optional)
     env_file:
       - .env
     volumes:

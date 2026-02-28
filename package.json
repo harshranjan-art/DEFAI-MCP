@@ -1,5 +1,5 @@
 {
-  "name": "defai-bharat",
+  "name": "defai-mcp",
   "version": "1.0.0",
   "description": "Autonomous DeFi agent on BNB Chain — AI-powered yield optimization, cross-DEX arbitrage, and delta-neutral strategies, all gasless via ERC-4337",
   "main": "index.js",

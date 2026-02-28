@@ -3,7 +3,7 @@ import { getSmartAccountAddress } from '../src/wallet/pimlico';
 async function main() {
   try {
     console.log('='.repeat(60));
-    console.log('DeFAI Bharat - Smart Account Setup');
+    console.log('DeFAI MCP - Smart Account Setup');
     console.log('='.repeat(60));
     console.log('');
 

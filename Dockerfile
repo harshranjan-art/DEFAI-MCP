@@ -26,9 +26,11 @@ RUN npm ci --legacy-peer-deps --omit=dev && apk del python3 make g++
 COPY --from=builder /app/dist ./dist
 COPY --from=dashboard-builder /app/dashboard/dist ./dashboard/dist
 COPY abis/ ./abis/
+COPY loadEnv.js ./
 RUN mkdir -p data
 
 EXPOSE 3002
+EXPOSE 3001
 
 ENV NODE_ENV=production
 
