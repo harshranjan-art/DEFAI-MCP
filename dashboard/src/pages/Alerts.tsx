@@ -1,30 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alerts } from '../api/client';
 
-const ALERT_META: Record<string, { label: string; desc: string; badgeCls: string }> = {
+const ALERT_META: Record<string, { label: string; desc: string }> = {
   apy_drop: {
-    label: 'APY Drop',
+    label: 'APY DROP',
     desc: 'Fires when yield on a position drops below your threshold',
-    badgeCls: 'bg-orange-900 text-orange-300',
   },
   arb_opportunity: {
-    label: 'Arb Opportunity',
+    label: 'ARB OPPORTUNITY',
     desc: 'Fires when a cross-DEX spread exceeds your threshold',
-    badgeCls: 'bg-blue-900 text-blue-300',
   },
   position_health: {
-    label: 'Position Health',
+    label: 'POSITION HEALTH',
     desc: 'Fires when a delta-neutral position needs attention',
-    badgeCls: 'bg-red-900 text-red-300',
   },
 };
 
 function AlertTypeBadge({ type }: { type: string }) {
   const meta = ALERT_META[type];
-  const cls = meta?.badgeCls || 'bg-gray-800 text-gray-300';
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
-      {meta?.label || type}
+    <span className="font-mono text-xs font-bold px-2 py-0.5 bg-black text-[#F5C518]">
+      {meta?.label ?? type?.toUpperCase() ?? 'ALERT'}
     </span>
   );
 }
@@ -32,7 +28,11 @@ function AlertTypeBadge({ type }: { type: string }) {
 export default function Alerts() {
   const queryClient = useQueryClient();
 
-  const configQ = useQuery({ queryKey: ['alerts'], queryFn: alerts.get });
+  const configQ = useQuery({
+    queryKey: ['alerts'],
+    queryFn: alerts.get,
+  });
+
   const notifQ = useQuery({
     queryKey: ['alerts-unread'],
     queryFn: alerts.unread,
@@ -41,115 +41,132 @@ export default function Alerts() {
 
   const markReadMutation = useMutation({
     mutationFn: (ids: string[]) => alerts.markRead(ids),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts-unread'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts-unread'] });
+    },
   });
 
-  const unreadNotifs: any[] = notifQ.data?.notifications || [];
-  const alertConfigs: any[] = configQ.data?.alerts || [];
+  const unreadNotifs: any[] = Array.isArray(notifQ.data?.notifications)
+    ? notifQ.data!.notifications
+    : [];
+
+  const alertConfigs: any[] = Array.isArray(configQ.data?.alerts)
+    ? configQ.data!.alerts
+    : [];
 
   const markAllRead = () => {
-    const ids = unreadNotifs.map((n) => n.id).filter(Boolean);
+    const ids = unreadNotifs.map((n: any) => n.id).filter(Boolean);
     if (ids.length > 0) markReadMutation.mutate(ids);
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Alerts</h1>
+    <div className="p-8 bg-white min-h-screen">
 
-      {/* ── Unread Notifications ─────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            Notifications
-            {unreadNotifs.length > 0 && (
-              <span className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
-                {unreadNotifs.length} unread
-              </span>
-            )}
-          </h2>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b-2 border-black pb-6 mb-6">
+        <h1 className="font-display text-4xl tracking-wide uppercase">Alerts</h1>
+        {unreadNotifs.length > 0 && (
+          <span className="font-display text-xl bg-[#F5C518] px-4 py-1 border-2 border-black">
+            {unreadNotifs.length} UNREAD
+          </span>
+        )}
+      </div>
+
+      {/* Unread Notifications */}
+      <div className="border-2 border-black mb-6">
+        <div className="px-6 py-4 border-b-2 border-black flex items-center justify-between bg-white">
+          <h2 className="font-display text-xl tracking-wide uppercase">Notifications</h2>
           {unreadNotifs.length > 0 && (
             <button
               onClick={markAllRead}
               disabled={markReadMutation.isPending}
-              className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 transition"
+              className="font-mono text-xs font-bold border-2 border-black px-3 py-1.5 hover:bg-[#F5C518] disabled:opacity-50 transition-all"
             >
-              Mark all read
+              MARK ALL READ
             </button>
           )}
         </div>
 
         {notifQ.isLoading ? (
-          <p className="text-gray-400 text-sm">Loading notifications...</p>
+          <p className="font-mono text-sm text-gray-500 p-6">Loading notifications...</p>
+        ) : notifQ.isError ? (
+          <p className="font-mono text-sm text-gray-500 p-6">Could not load notifications.</p>
         ) : unreadNotifs.length > 0 ? (
-          <div className="space-y-2">
+          <div>
             {unreadNotifs.map((n: any, i: number) => (
               <div
-                key={n.id || i}
-                className="flex items-start justify-between gap-4 p-3 bg-gray-800 rounded-lg"
+                key={n.id ?? i}
+                className="flex items-start justify-between gap-4 p-5 border-b-2 border-black last:border-b-0 border-l-4 border-l-[#F5C518] hover:bg-[#F5F5F5] transition-colors"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <AlertTypeBadge type={n.type} />
+                  <div className="flex items-center gap-3 mb-2">
+                    <AlertTypeBadge type={n.type ?? 'alert'} />
                     {n.created_at && (
-                      <span className="text-xs text-gray-500">
+                      <span className="font-mono text-xs text-gray-500">
                         {new Date(n.created_at).toLocaleString()}
                       </span>
                     )}
                   </div>
-                  <p className="text-gray-300 text-sm">{n.message}</p>
+                  <p className="font-mono text-sm text-black">{n.message}</p>
                 </div>
                 {n.id && (
                   <button
                     onClick={() => markReadMutation.mutate([n.id])}
-                    className="text-xs text-gray-500 hover:text-white transition shrink-0"
+                    className="font-mono text-xs font-bold border-2 border-black px-2 py-1 hover:bg-black hover:text-[#F5C518] transition-all shrink-0"
                   >
-                    Dismiss
+                    DISMISS
                   </button>
                 )}
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-gray-500 text-sm">No unread notifications. Watchers check every 2–5 min.</p>
+          <div className="p-8 text-center">
+            <p className="font-mono text-sm text-gray-500">No unread notifications.</p>
+            <p className="font-mono text-xs text-gray-400 mt-1">Watchers check every 2–5 min.</p>
+          </div>
         )}
       </div>
 
-      {/* ── Alert Configuration ───────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-1">Alert Configuration</h2>
-        <p className="text-gray-500 text-sm mb-4">
-          Toggle alerts via MCP{' '}
-          <code className="bg-gray-800 px-1 py-0.5 rounded text-xs">set_alerts</code> tool or
-          Telegram.
-        </p>
+      {/* Alert Configuration */}
+      <div className="border-2 border-black">
+        <div className="px-6 py-4 border-b-2 border-black bg-white">
+          <h2 className="font-display text-xl tracking-wide uppercase">Alert Configuration</h2>
+          <p className="font-mono text-xs text-gray-500 mt-1">
+            Toggle via MCP{' '}
+            <span className="bg-black text-[#F5C518] px-1 font-bold">set_alerts</span>{' '}
+            tool or Telegram.
+          </p>
+        </div>
 
         {configQ.isLoading ? (
-          <p className="text-gray-400 text-sm">Loading configuration...</p>
+          <p className="font-mono text-sm text-gray-500 p-6">Loading configuration...</p>
+        ) : configQ.isError ? (
+          <p className="font-mono text-sm text-gray-500 p-6">Could not load alert config.</p>
         ) : (
-          <div className="space-y-2">
-            {/* Always show all three types; overlay real config on top */}
-            {Object.entries(ALERT_META).map(([type, meta]) => {
+          <div>
+            {Object.entries(ALERT_META).map(([type, meta], idx) => {
               const configured = alertConfigs.find((a: any) => a.type === type);
-              const isActive = configured?.active ?? false;
+              const isActive = configured?.active === true;
               return (
                 <div
                   key={type}
-                  className="flex items-center justify-between p-4 bg-gray-800 rounded-lg"
+                  className={`flex items-center justify-between p-5 transition-colors ${
+                    idx < Object.keys(ALERT_META).length - 1 ? 'border-b-2 border-black' : ''
+                  } ${isActive ? 'bg-[#F5C518]' : 'bg-white hover:bg-[#F5F5F5]'}`}
                 >
                   <div>
-                    <p className="text-white text-sm font-medium">{meta.label}</p>
-                    <p className="text-gray-500 text-xs mt-0.5">{meta.desc}</p>
+                    <p className="font-mono font-bold text-sm text-black">{meta.label}</p>
+                    <p className="font-mono text-xs text-gray-600 mt-0.5">{meta.desc}</p>
                     {configured?.threshold != null && (
-                      <p className="text-gray-400 text-xs mt-1">
+                      <p className="font-mono text-xs text-gray-500 mt-1">
                         Threshold: {configured.threshold}
                       </p>
                     )}
                   </div>
                   <span
-                    className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                      isActive
-                        ? 'bg-green-900 text-green-300'
-                        : 'bg-gray-700 text-gray-400'
+                    className={`font-mono text-xs font-bold px-3 py-1.5 border-2 border-black ${
+                      isActive ? 'bg-black text-[#F5C518]' : 'bg-white text-black'
                     }`}
                   >
                     {isActive ? 'ON' : 'OFF'}
@@ -160,6 +177,7 @@ export default function Alerts() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

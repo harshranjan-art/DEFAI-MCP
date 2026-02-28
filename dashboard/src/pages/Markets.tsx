@@ -13,74 +13,75 @@ export default function Markets() {
   const fundingQ = useQuery({ queryKey: ['funding'], queryFn: markets.funding, refetchInterval: 60000 });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Markets</h1>
+    <div className="p-8 space-y-6 bg-white min-h-screen">
+      {/* Header */}
+      <div className="border-b-2 border-black pb-6">
+        <h1 className="font-display text-4xl tracking-wide uppercase">Markets</h1>
       </div>
 
       {/* Data source disclaimer */}
-      <div className="bg-gray-900 rounded-xl px-5 py-3 text-xs text-gray-500 leading-relaxed">
-        Yield data sourced from{' '}
-        <span className="text-gray-400 font-medium">Venus</span>,{' '}
-        <span className="text-gray-400 font-medium">Beefy</span>, and{' '}
-        <span className="text-gray-400 font-medium">DefiLlama</span> — live on-chain APYs.{' '}
-        DEX prices scraped live from{' '}
-        <span className="text-gray-400 font-medium">DexScreener</span> (BSC mainnet) +{' '}
-        <span className="text-gray-400 font-medium">CoinGecko</span> — real market data.{' '}
-        Funding rates from{' '}
-        <span className="text-gray-400 font-medium">Binance Futures</span> (mainnet).{' '}
-        <span className="text-yellow-500">sim</span> = simulated execution; no testnet contracts for Thena/BiSwap.
+      <div className="border-l-4 border-[#F5C518] bg-[#F5F5F5] px-5 py-3 font-mono text-xs text-gray-600 leading-relaxed">
+        Yield data: <span className="font-bold text-black">Venus</span>, <span className="font-bold text-black">Beefy</span>, <span className="font-bold text-black">DefiLlama</span> — live on-chain APYs.{' '}
+        DEX prices: <span className="font-bold text-black">DexScreener</span> (BSC mainnet) + <span className="font-bold text-black">CoinGecko</span>.{' '}
+        Funding rates: <span className="font-bold text-black">Binance Futures</span> (mainnet).{' '}
+        <span className="bg-black text-[#F5C518] px-1 font-bold">SIM</span> = simulated execution; no testnet contracts for Thena/BiSwap.
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-900 rounded-xl p-1 w-fit">
+      <div className="flex border-2 border-black w-fit">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-6 py-3 font-mono text-xs font-bold transition-all ${
               activeTab === tab
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-            }`}
+                ? 'bg-[#F5C518] text-black'
+                : 'bg-white text-black hover:bg-[#F5F5F5]'
+            } ${tab !== TABS[0] ? 'border-l-2 border-black' : ''}`}
           >
-            {tab}
+            {tab.toUpperCase()}
           </button>
         ))}
       </div>
 
       {/* Yield Rates */}
       {activeTab === 'Yield Rates' && (
-        <div className="bg-gray-900 rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-white mb-4">Yield Rates</h2>
+        <div className="border-2 border-black">
+          <div className="px-6 py-4 border-b-2 border-black bg-white">
+            <h2 className="font-display text-xl tracking-wide uppercase">Yield Rates</h2>
+          </div>
           {yieldsQ.isLoading ? (
-            <p className="text-gray-500">Loading...</p>
+            <p className="font-mono text-sm text-gray-500 p-6">Loading...</p>
           ) : yieldsQ.data?.yields && yieldsQ.data.yields.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-gray-400 border-b border-gray-800 text-left">
-                    <th className="py-2 pr-4 font-medium">Protocol</th>
-                    <th className="py-2 pr-4 font-medium">Pool</th>
-                    <th className="py-2 pr-4 font-medium">Token</th>
-                    <th className="py-2 pr-4 font-medium">APY</th>
-                    <th className="py-2 pr-4 font-medium">TVL</th>
-                    <th className="py-2 font-medium">Source</th>
+                  <tr className="bg-black text-[#F5C518] font-mono text-xs">
+                    <th className="text-left px-4 py-3 font-bold">PROTOCOL</th>
+                    <th className="text-left px-4 py-3 font-bold">POOL</th>
+                    <th className="text-left px-4 py-3 font-bold">TOKEN</th>
+                    <th className="text-left px-4 py-3 font-bold">APY</th>
+                    <th className="text-left px-4 py-3 font-bold">TVL</th>
+                    <th className="text-left px-4 py-3 font-bold">SOURCE</th>
                   </tr>
                 </thead>
                 <tbody>
                   {yieldsQ.data.yields.slice(0, 30).map((y: any, i: number) => (
-                    <tr key={i} className="border-b border-gray-800 text-gray-300 hover:bg-gray-800/30 transition">
-                      <td className="py-2 pr-4 font-medium text-white">{y.protocol}</td>
-                      <td className="py-2 pr-4">{y.pool || '—'}</td>
-                      <td className="py-2 pr-4">{y.token}</td>
-                      <td className="py-2 pr-4 font-semibold text-green-400">{y.apy?.toFixed(2)}%</td>
-                      <td className="py-2 pr-4">{y.tvl ? `$${(y.tvl / 1e6).toFixed(1)}M` : '—'}</td>
-                      <td className="py-2">
+                    <tr key={i} className={`border-b border-black font-mono text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-[#F5F5F5]'}`}>
+                      <td className="px-4 py-3 font-bold">{y.protocol}</td>
+                      <td className="px-4 py-3">{y.pool || '—'}</td>
+                      <td className="px-4 py-3">{y.token}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold bg-[#F5C518] px-2 py-0.5 border border-black">
+                          {y.apy?.toFixed(2)}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{y.tvl ? `$${(y.tvl / 1e6).toFixed(1)}M` : '—'}</td>
+                      <td className="px-4 py-3">
                         {y.isSimulated ? (
-                          <span className="px-1.5 py-0.5 bg-yellow-900/50 text-yellow-500 text-xs rounded">sim</span>
+                          <span className="bg-black text-[#F5C518] text-xs font-bold px-2 py-0.5">SIM</span>
                         ) : (
-                          <span className="px-1.5 py-0.5 bg-green-900/50 text-green-400 text-xs rounded">live</span>
+                          <span className="bg-[#F5C518] text-black text-xs font-bold px-2 py-0.5 border border-black">LIVE</span>
                         )}
                       </td>
                     </tr>
@@ -89,39 +90,43 @@ export default function Markets() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500">No yield data available.</p>
+            <p className="font-mono text-sm text-gray-500 p-6">No yield data available.</p>
           )}
         </div>
       )}
 
       {/* DEX Prices */}
       {activeTab === 'DEX Prices' && (
-        <div className="bg-gray-900 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">DEX Prices</h2>
-            <span className="text-xs text-gray-500">Live from DexScreener · BSC mainnet</span>
+        <div className="border-2 border-black">
+          <div className="px-6 py-4 border-b-2 border-black flex items-center justify-between bg-white">
+            <h2 className="font-display text-xl tracking-wide uppercase">DEX Prices</h2>
+            <span className="font-mono text-xs text-gray-500">Live · DexScreener · BSC mainnet</span>
           </div>
           {pricesQ.isLoading ? (
-            <p className="text-gray-500">Loading prices...</p>
+            <p className="font-mono text-sm text-gray-500 p-6">Loading prices...</p>
           ) : pricesQ.data?.quotes && pricesQ.data.quotes.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-gray-400 border-b border-gray-800 text-left">
-                    <th className="py-2 pr-4 font-medium">DEX</th>
-                    <th className="py-2 pr-4 font-medium">Pair</th>
-                    <th className="py-2 pr-4 font-medium">Price</th>
-                    <th className="py-2 font-medium">Price Impact</th>
+                  <tr className="bg-black text-[#F5C518] font-mono text-xs">
+                    <th className="text-left px-4 py-3 font-bold">DEX</th>
+                    <th className="text-left px-4 py-3 font-bold">PAIR</th>
+                    <th className="text-left px-4 py-3 font-bold">PRICE</th>
+                    <th className="text-left px-4 py-3 font-bold">PRICE IMPACT</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pricesQ.data.quotes.map((q: any, i: number) => (
-                    <tr key={i} className="border-b border-gray-800 text-gray-300 hover:bg-gray-800/30 transition">
-                      <td className="py-2 pr-4 font-medium text-white">{q.dex}</td>
-                      <td className="py-2 pr-4">{q.fromToken}/{q.toToken}</td>
-                      <td className="py-2 pr-4 font-mono">${q.effectivePrice?.toFixed(4)}</td>
-                      <td className="py-2">
-                        <span className={q.priceImpact > 1 ? 'text-red-400' : 'text-gray-300'}>
+                    <tr key={i} className={`border-b border-black font-mono text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-[#F5F5F5]'}`}>
+                      <td className="px-4 py-3 font-bold">{q.dex}</td>
+                      <td className="px-4 py-3">{q.fromToken}/{q.toToken}</td>
+                      <td className="px-4 py-3 font-bold">${q.effectivePrice?.toFixed(4)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`font-bold px-2 py-0.5 border ${
+                          q.priceImpact > 1
+                            ? 'bg-black text-[#F5C518] border-black'
+                            : 'bg-white text-black border-black'
+                        }`}>
                           {q.priceImpact?.toFixed(2)}%
                         </span>
                       </td>
@@ -131,40 +136,40 @@ export default function Markets() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500">No price data available.</p>
+            <p className="font-mono text-sm text-gray-500 p-6">No price data available.</p>
           )}
         </div>
       )}
 
       {/* Funding Rates */}
       {activeTab === 'Funding Rates' && (
-        <div className="bg-gray-900 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Funding Rates</h2>
-            <span className="text-xs text-gray-500">Binance Futures · mainnet</span>
+        <div className="border-2 border-black">
+          <div className="px-6 py-4 border-b-2 border-black flex items-center justify-between bg-white">
+            <h2 className="font-display text-xl tracking-wide uppercase">Funding Rates</h2>
+            <span className="font-mono text-xs text-gray-500">Binance Futures · mainnet</span>
           </div>
           {fundingQ.isLoading ? (
-            <p className="text-gray-500">Loading...</p>
+            <p className="font-mono text-sm text-gray-500 p-6">Loading...</p>
           ) : fundingQ.data?.rates ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
               {Object.entries(fundingQ.data.rates).map(([symbol, rates]: [string, any]) => (
-                <div key={symbol} className="bg-gray-800 rounded-lg p-4">
-                  <p className="font-medium text-white">{symbol}</p>
+                <div key={symbol} className="border-2 border-black p-4 bg-white">
+                  <p className="font-mono font-bold text-sm">{symbol}</p>
                   {rates[0] && (
-                    <p className={`text-lg font-bold mt-1 ${
-                      rates[0].fundingRate > 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {rates[0].fundingRate?.toFixed(4)}%
+                    <p className={`font-display text-2xl mt-2 ${rates[0].fundingRate > 0 ? 'text-black' : 'text-black'}`}>
+                      <span className={`px-2 py-0.5 ${rates[0].fundingRate > 0 ? 'bg-[#F5C518]' : 'bg-black text-[#F5C518]'}`}>
+                        {rates[0].fundingRate?.toFixed(4)}%
+                      </span>
                     </p>
                   )}
-                  <p className="text-gray-500 text-xs mt-1">
+                  <p className="font-mono text-xs text-gray-500 mt-2">
                     {rates[0]?.fundingTime ? new Date(rates[0].fundingTime).toLocaleString() : ''}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500">No funding rate data available.</p>
+            <p className="font-mono text-sm text-gray-500 p-6">No funding rate data available.</p>
           )}
         </div>
       )}

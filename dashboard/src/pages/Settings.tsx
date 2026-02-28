@@ -1,5 +1,25 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { alerts } from '../api/client';
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-2 px-3 py-1 text-xs font-mono font-bold border-2 border-black bg-white hover:bg-[#F5C518] transition-all"
+    >
+      {copied ? 'COPIED!' : 'COPY'}
+    </button>
+  );
+}
 
 export default function Settings() {
   const alertsQ = useQuery({ queryKey: ['alerts'], queryFn: alerts.get });
@@ -7,58 +27,78 @@ export default function Settings() {
   const userId = localStorage.getItem('defai_userId') || '';
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Settings</h1>
+    <div className="p-8 space-y-6 bg-white min-h-screen">
+      {/* Header */}
+      <div className="border-b-2 border-black pb-6">
+        <h1 className="font-display text-4xl tracking-wide uppercase">Settings</h1>
+      </div>
 
       {/* Account Info */}
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Account</h2>
-        <div className="space-y-3 text-sm">
+      <div className="border-2 border-black">
+        <div className="px-6 py-4 border-b-2 border-black bg-[#F5C518]">
+          <h2 className="font-display text-xl tracking-wide uppercase">Account</h2>
+        </div>
+        <div className="p-6 space-y-5">
           <div>
-            <span className="text-gray-400">User ID: </span>
-            <code className="text-gray-200 bg-gray-800 px-2 py-0.5 rounded">{userId}</code>
+            <p className="font-mono text-xs font-bold uppercase text-gray-500 mb-2">User ID</p>
+            <div className="flex items-center border-2 border-black bg-[#F5F5F5] px-3 py-2">
+              <code className="font-mono text-sm text-black break-all flex-1">{userId || 'Not set'}</code>
+              {userId && <CopyButton text={userId} />}
+            </div>
           </div>
+
           <div>
-            <span className="text-gray-400">Smart Account: </span>
-            {smartAccount ? (
-              <a
-                href={`https://testnet.bscscan.com/address/${smartAccount}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
-              >
-                {smartAccount}
-              </a>
-            ) : (
-              <span className="text-gray-500">Not set</span>
-            )}
+            <p className="font-mono text-xs font-bold uppercase text-gray-500 mb-2">Smart Account</p>
+            <div className="flex items-center border-2 border-black bg-[#F5F5F5] px-3 py-2">
+              {smartAccount ? (
+                <a
+                  href={`https://testnet.bscscan.com/address/${smartAccount}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-sm text-black break-all flex-1 underline underline-offset-2 decoration-[#F5C518]"
+                >
+                  {smartAccount}
+                </a>
+              ) : (
+                <span className="font-mono text-sm text-gray-500">Not set</span>
+              )}
+            </div>
           </div>
+
           <div>
-            <span className="text-gray-400">Chain: </span>
-            <span className="text-gray-200">BSC Testnet (ID: 97)</span>
+            <p className="font-mono text-xs font-bold uppercase text-gray-500 mb-2">Chain</p>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 bg-black text-[#F5C518] font-mono text-xs font-bold px-4 py-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#F5C518]"></span>
+                BSC TESTNET · ID: 97
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Alert Configuration */}
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Alert Settings</h2>
-        <p className="text-gray-400 text-sm mb-4">
-          Configure alerts via MCP (<code>set_alerts</code>) or Telegram. Alerts are delivered via Telegram if linked.
-        </p>
+      {/* Alert Settings */}
+      <div className="border-2 border-black">
+        <div className="px-6 py-4 border-b-2 border-black bg-white">
+          <h2 className="font-display text-xl tracking-wide uppercase">Alert Settings</h2>
+          <p className="font-mono text-xs text-gray-500 mt-1">
+            Configure via MCP <span className="bg-black text-[#F5C518] px-1 font-bold text-xs">set_alerts</span> or Telegram.
+            Alerts are delivered via Telegram if linked.
+          </p>
+        </div>
 
         {alertsQ.data?.alerts && alertsQ.data.alerts.length > 0 ? (
-          <div className="space-y-2">
+          <div className="divide-y-2 divide-black">
             {alertsQ.data.alerts.map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
+              <div key={a.id} className="flex items-center justify-between px-6 py-4">
                 <div>
-                  <span className="text-gray-200">{a.type}</span>
+                  <span className="font-mono font-bold text-sm text-black">{a.type?.toUpperCase().replace('_', ' ')}</span>
                   {a.threshold && (
-                    <span className="text-gray-500 text-xs ml-2">threshold: {a.threshold}</span>
+                    <span className="font-mono text-xs text-gray-500 ml-3">threshold: {a.threshold}</span>
                   )}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  a.active ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'
+                <span className={`font-mono text-xs font-bold px-3 py-1.5 border-2 border-black ${
+                  a.active ? 'bg-[#F5C518] text-black' : 'bg-white text-black'
                 }`}>
                   {a.active ? 'ON' : 'OFF'}
                 </span>
@@ -66,19 +106,29 @@ export default function Settings() {
             ))}
           </div>
         ) : (
-          <p className="text-gray-500 text-sm">No alerts configured.</p>
+          <div className="p-6">
+            <p className="font-mono text-sm text-gray-500">No alerts configured.</p>
+          </div>
         )}
       </div>
 
-      {/* Link Instructions */}
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Link Telegram</h2>
-        <p className="text-gray-400 text-sm">
-          To receive alerts via Telegram, open the DeFAI bot and send:
-        </p>
-        <code className="block bg-gray-800 p-3 rounded-lg text-gray-200 text-sm mt-2">
-          /link {userId}
-        </code>
+      {/* Link Telegram */}
+      <div className="border-2 border-black">
+        <div className="px-6 py-4 border-b-2 border-black bg-white">
+          <h2 className="font-display text-xl tracking-wide uppercase">Link Telegram</h2>
+        </div>
+        <div className="p-6">
+          <p className="font-mono text-sm text-gray-600 mb-4">
+            To receive alerts via Telegram, open the DeFAI bot and send:
+          </p>
+          <div className="border-2 border-black bg-[#F5C518] px-5 py-4 flex items-center justify-between">
+            <code className="font-mono text-sm font-bold text-black">/link {userId}</code>
+            {userId && <CopyButton text={`/link ${userId}`} />}
+          </div>
+          <p className="font-mono text-xs text-gray-500 mt-3">
+            After linking, all active alerts will be delivered to your Telegram account.
+          </p>
+        </div>
       </div>
     </div>
   );

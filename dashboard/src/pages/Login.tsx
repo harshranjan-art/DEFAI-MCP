@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, setToken } from '../api/client';
+import logo from '../assets/image.png';
 
 type Tab = 'login' | 'register';
 
@@ -22,9 +23,9 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="ml-2 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition"
+      className="ml-2 px-3 py-1 text-xs font-mono font-bold border-2 border-black bg-white text-black hover:bg-[#F5C518] transition-all"
     >
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? 'COPIED!' : 'COPY'}
     </button>
   );
 }
@@ -35,10 +36,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Login state
   const [apiKey, setApiKey] = useState('');
-
-  // Register state
   const [privateKey, setPrivateKey] = useState('');
   const [registerResult, setRegisterResult] = useState<RegisterResult | null>(null);
 
@@ -87,184 +85,241 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="bg-gray-900 p-8 rounded-xl shadow-lg w-full max-w-lg">
-        <h1 className="text-2xl font-bold text-white mb-2">DeFAI Dashboard</h1>
-        <p className="text-gray-400 mb-6">BSC Testnet DeFi Agent</p>
-
-        {/* Tab switcher */}
-        {!registerResult && (
-          <div className="flex mb-6 border-b border-gray-700">
+    <div className="bg-white">
+      {/* Above-fold: header + hero fills exactly one viewport */}
+      <div className="min-h-screen flex flex-col">
+        {/* Header bar */}
+        <header className="flex items-center justify-between px-6 border-b-2 border-black">
+          <img src={logo} alt="DeFAI" className="h-16 w-auto object-contain block" />
+          <div className="flex items-center gap-3">
+            <span className="bg-black text-white font-mono font-bold text-sm px-5 py-2 rounded-full">
+              BNB
+            </span>
             <button
-              onClick={() => { setTab('register'); setError(''); }}
-              className={`flex-1 pb-3 text-sm font-medium transition ${
-                tab === 'register'
-                  ? 'text-blue-400 border-b-2 border-blue-400'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
+              onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="w-11 h-11 rounded-full bg-[#F5C518] border-2 border-black flex items-center justify-center hover:bg-black hover:text-[#F5C518] transition-all text-black font-bold text-lg"
             >
-              Register
-            </button>
-            <button
-              onClick={() => { setTab('login'); setError(''); }}
-              className={`flex-1 pb-3 text-sm font-medium transition ${
-                tab === 'login'
-                  ? 'text-blue-400 border-b-2 border-blue-400'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
-              Login
+              →
             </button>
           </div>
-        )}
+        </header>
 
-        {/* Registration result panel */}
-        {registerResult && (
-          <div>
-            <div className="bg-green-900/30 border border-green-700 rounded-lg p-4 mb-6">
-              <p className="text-green-400 font-medium mb-1">Registration successful!</p>
-              <p className="text-green-300/70 text-sm">Save these credentials — you'll need them to connect from other platforms.</p>
+        {/* Hero section — flex-1 fills remaining viewport after header */}
+        <section className="flex-1 flex items-center justify-center px-8">
+          <div className="max-w-5xl w-full">
+            <h1 className="font-display text-5xl md:text-7xl lg:text-8xl leading-none tracking-wide uppercase text-center">
+              <span className="text-black">"DEFI IS </span>
+              <span className="text-[#F5C518]">BROKEN</span>
+              <span className="text-black"> FOR HUMANS,</span>
+              <br />
+              <span className="text-black">AND </span>
+              <span className="text-[#F5C518]">AI</span>
+              <span className="text-black"> CAN'T ACCESS IT</span>
+              <br />
+              <span className="text-black">EITHER"</span>
+            </h1>
+            <div className="flex justify-center mt-10">
+              <button
+                onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}
+                className="font-display text-lg px-10 py-4 bg-black text-[#F5C518] border-2 border-black hover:bg-[#F5C518] hover:text-black transition-all tracking-widest"
+              >
+                GET STARTED
+              </button>
             </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Smart Account</label>
-                <div className="flex items-center">
-                  <a
-                    href={`https://testnet.bscscan.com/address/${registerResult.smartAccountAddress}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 text-sm font-mono break-all"
-                  >
-                    {registerResult.smartAccountAddress}
-                  </a>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">User ID</label>
-                <div className="flex items-center bg-gray-800 rounded-lg px-3 py-2">
-                  <code className="text-white text-sm font-mono break-all flex-1">{registerResult.userId}</code>
-                  <CopyButton text={registerResult.userId} />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">API Key</label>
-                <div className="flex items-center bg-gray-800 rounded-lg px-3 py-2">
-                  <code className="text-white text-sm font-mono break-all flex-1">{registerResult.apiKey}</code>
-                  <CopyButton text={registerResult.apiKey} />
-                </div>
-              </div>
-            </div>
-
-            {/* Setup instructions */}
-            <div className="bg-gray-800 rounded-lg p-4 mb-6 space-y-3">
-              <p className="text-gray-300 text-sm font-medium">Setup for other platforms:</p>
-
-              <div>
-                <p className="text-gray-400 text-xs font-medium mb-1">Claude Desktop (MCP)</p>
-                <div className="bg-gray-900 rounded px-3 py-2 flex items-center">
-                  <code className="text-gray-300 text-xs break-all flex-1">DEFAI_USER_ID={registerResult.userId}</code>
-                  <CopyButton text={`DEFAI_USER_ID=${registerResult.userId}`} />
-                </div>
-                <p className="text-gray-500 text-xs mt-1">Add to the "env" section of your Claude Desktop MCP config</p>
-              </div>
-
-              <div>
-                <p className="text-gray-400 text-xs font-medium mb-1">Telegram</p>
-                <div className="bg-gray-900 rounded px-3 py-2 flex items-center">
-                  <code className="text-gray-300 text-xs break-all flex-1">/connect {registerResult.userId}</code>
-                  <CopyButton text={`/connect ${registerResult.userId}`} />
-                </div>
-                <p className="text-gray-500 text-xs mt-1">Send this command to the DeFAI Telegram bot</p>
-              </div>
-
-              <div>
-                <p className="text-gray-400 text-xs font-medium mb-1">Dashboard (next login)</p>
-                <p className="text-gray-500 text-xs">Use the Login tab with your API key above</p>
-              </div>
-            </div>
-
-            <button
-              onClick={goToLogin}
-              className="w-full p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition"
-            >
-              Go to Login
-            </button>
-
-            <button
-              onClick={() => navigate('/')}
-              className="w-full p-3 mt-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
-            >
-              Go to Dashboard
-            </button>
           </div>
-        )}
-
-        {/* Login form */}
-        {!registerResult && tab === 'login' && (
-          <form onSubmit={handleLogin}>
-            <label className="block text-sm text-gray-300 mb-1">API Key</label>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="dfai_k_..."
-              className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white mb-4 focus:outline-none focus:border-blue-500"
-            />
-
-            {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading || !apiKey}
-              className="w-full p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white rounded-lg font-medium transition"
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-
-            <p className="text-gray-500 text-xs mt-4 text-center">
-              Don't have an API key? Switch to the Register tab.
-            </p>
-          </form>
-        )}
-
-        {/* Register form */}
-        {!registerResult && tab === 'register' && (
-          <form onSubmit={handleRegister}>
-            <label className="block text-sm text-gray-300 mb-1">Private Key</label>
-            <input
-              type="password"
-              value={privateKey}
-              onChange={(e) => setPrivateKey(e.target.value)}
-              placeholder="Enter your EOA private key (hex)"
-              className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white mb-4 focus:outline-none focus:border-blue-500"
-            />
-
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 mb-4">
-              <p className="text-gray-400 text-xs">
-                Your key is encrypted with AES-256-GCM on the server. It is never stored in plaintext.
-                After registration, you'll receive a UUID that replaces your private key for all future interactions.
-              </p>
-            </div>
-
-            {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading || !privateKey}
-              className="w-full p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white rounded-lg font-medium transition"
-            >
-              {loading ? 'Registering...' : 'Register'}
-            </button>
-
-            <p className="text-gray-500 text-xs mt-4 text-center">
-              Already registered? Switch to the Login tab and use your API key.
-            </p>
-          </form>
-        )}
+        </section>
       </div>
+
+      {/* Auth section — below the fold, requires scroll */}
+      <section id="auth-section" className="border-t-2 border-black bg-[#F5F5F5] py-16 px-8">
+        <div className="max-w-lg mx-auto">
+          <div className="border-2 border-black bg-white p-8">
+            <h2 className="font-display text-2xl mb-1 tracking-wide">ACCESS DASHBOARD</h2>
+            <p className="font-mono text-sm text-gray-600 mb-8">BSC Testnet DeFi Agent</p>
+
+            {/* Registration result */}
+            {registerResult && (
+              <div>
+                <div className="bg-[#F5C518] border-2 border-black p-4 mb-6">
+                  <p className="font-mono font-bold text-black text-sm">REGISTRATION SUCCESSFUL</p>
+                  <p className="font-mono text-xs text-black/70 mt-1">
+                    Save these credentials — you'll need them to connect from other platforms.
+                  </p>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block font-mono text-xs font-bold text-gray-500 mb-1 uppercase">Smart Account</label>
+                    <div className="flex items-center border-2 border-black bg-[#F5F5F5] px-3 py-2">
+                      <a
+                        href={`https://testnet.bscscan.com/address/${registerResult.smartAccountAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-black font-mono text-xs break-all flex-1 underline underline-offset-2 decoration-[#F5C518]"
+                      >
+                        {registerResult.smartAccountAddress}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-mono text-xs font-bold text-gray-500 mb-1 uppercase">User ID</label>
+                    <div className="flex items-center border-2 border-black bg-[#F5F5F5] px-3 py-2">
+                      <code className="text-black font-mono text-xs break-all flex-1">{registerResult.userId}</code>
+                      <CopyButton text={registerResult.userId} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-mono text-xs font-bold text-gray-500 mb-1 uppercase">API Key</label>
+                    <div className="flex items-center border-2 border-black bg-[#F5F5F5] px-3 py-2">
+                      <code className="text-black font-mono text-xs break-all flex-1">{registerResult.apiKey}</code>
+                      <CopyButton text={registerResult.apiKey} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Setup instructions */}
+                <div className="border-2 border-black p-4 mb-6 space-y-4 bg-white">
+                  <p className="font-mono text-xs font-bold uppercase text-black">Setup for Other Platforms</p>
+
+                  <div>
+                    <p className="font-mono text-xs font-bold text-gray-500 mb-1">CLAUDE DESKTOP (MCP)</p>
+                    <div className="border-2 border-black bg-[#F5F5F5] px-3 py-2 flex items-center">
+                      <code className="font-mono text-xs break-all flex-1">DEFAI_USER_ID={registerResult.userId}</code>
+                      <CopyButton text={`DEFAI_USER_ID=${registerResult.userId}`} />
+                    </div>
+                    <p className="font-mono text-xs text-gray-500 mt-1">Add to "env" section in Claude Desktop MCP config</p>
+                  </div>
+
+                  <div>
+                    <p className="font-mono text-xs font-bold text-gray-500 mb-1">TELEGRAM</p>
+                    <div className="border-2 border-black bg-[#F5F5F5] px-3 py-2 flex items-center">
+                      <code className="font-mono text-xs break-all flex-1">/connect {registerResult.userId}</code>
+                      <CopyButton text={`/connect ${registerResult.userId}`} />
+                    </div>
+                    <p className="font-mono text-xs text-gray-500 mt-1">Send this command to the DeFAI Telegram bot</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={goToLogin}
+                    className="flex-1 p-3 font-mono font-bold text-sm border-2 border-black bg-white text-black hover:bg-black hover:text-[#F5C518] transition-all"
+                  >
+                    LOGIN
+                  </button>
+                  <button
+                    onClick={() => navigate('/')}
+                    className="flex-1 p-3 font-mono font-bold text-sm border-2 border-black bg-[#F5C518] text-black hover:bg-black hover:text-[#F5C518] transition-all"
+                  >
+                    DASHBOARD →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab switcher */}
+            {!registerResult && (
+              <>
+                <div className="flex mb-6 border-2 border-black">
+                  <button
+                    onClick={() => { setTab('register'); setError(''); }}
+                    className={`flex-1 py-3 font-mono text-sm font-bold transition-all ${
+                      tab === 'register'
+                        ? 'bg-[#F5C518] text-black'
+                        : 'bg-white text-black hover:bg-[#F5F5F5]'
+                    }`}
+                  >
+                    REGISTER
+                  </button>
+                  <button
+                    onClick={() => { setTab('login'); setError(''); }}
+                    className={`flex-1 py-3 font-mono text-sm font-bold transition-all border-l-2 border-black ${
+                      tab === 'login'
+                        ? 'bg-[#F5C518] text-black'
+                        : 'bg-white text-black hover:bg-[#F5F5F5]'
+                    }`}
+                  >
+                    LOGIN
+                  </button>
+                </div>
+
+                {/* Login form */}
+                {tab === 'login' && (
+                  <form onSubmit={handleLogin}>
+                    <label className="block font-mono text-xs font-bold uppercase text-gray-500 mb-1">API Key</label>
+                    <input
+                      type="text"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="dfai_k_..."
+                      className="w-full p-3 border-2 border-black bg-white font-mono text-sm text-black mb-4 focus:outline-none focus:border-[#F5C518] placeholder-gray-400"
+                    />
+
+                    {error && (
+                      <div className="border-2 border-black bg-black text-[#F5C518] font-mono text-xs p-3 mb-4">
+                        ERROR: {error}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading || !apiKey}
+                      className="w-full p-3 font-mono font-bold text-sm border-2 border-black bg-black text-[#F5C518] hover:bg-[#F5C518] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {loading ? 'LOGGING IN...' : 'LOGIN →'}
+                    </button>
+
+                    <p className="font-mono text-xs text-gray-500 mt-4 text-center">
+                      No API key? Switch to REGISTER tab.
+                    </p>
+                  </form>
+                )}
+
+                {/* Register form */}
+                {tab === 'register' && (
+                  <form onSubmit={handleRegister}>
+                    <label className="block font-mono text-xs font-bold uppercase text-gray-500 mb-1">Private Key</label>
+                    <input
+                      type="password"
+                      value={privateKey}
+                      onChange={(e) => setPrivateKey(e.target.value)}
+                      placeholder="Enter your EOA private key (hex)"
+                      className="w-full p-3 border-2 border-black bg-white font-mono text-sm text-black mb-4 focus:outline-none focus:border-[#F5C518] placeholder-gray-400"
+                    />
+
+                    <div className="border-l-4 border-[#F5C518] bg-[#F5F5F5] p-3 mb-4">
+                      <p className="font-mono text-xs text-gray-600">
+                        Your key is encrypted with AES-256-GCM. It is never stored in plaintext.
+                        After registration, use your UUID for all future interactions.
+                      </p>
+                    </div>
+
+                    {error && (
+                      <div className="border-2 border-black bg-black text-[#F5C518] font-mono text-xs p-3 mb-4">
+                        ERROR: {error}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading || !privateKey}
+                      className="w-full p-3 font-mono font-bold text-sm border-2 border-black bg-black text-[#F5C518] hover:bg-[#F5C518] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {loading ? 'REGISTERING...' : 'REGISTER →'}
+                    </button>
+
+                    <p className="font-mono text-xs text-gray-500 mt-4 text-center">
+                      Already registered? Switch to LOGIN tab.
+                    </p>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

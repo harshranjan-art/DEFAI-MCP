@@ -1,1 +1,41 @@
 @import "tailwindcss";
+
+:root {
+  --yellow: #F5C518;
+  --yellow-hover: #E6B600;
+  --black: #000000;
+  --white: #FFFFFF;
+  --gray-light: #F5F5F5;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Space Mono', monospace;
+  background-color: var(--white);
+  color: var(--black);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: 'Bungee', cursive;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--yellow);
+}

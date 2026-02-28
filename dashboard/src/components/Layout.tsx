@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { clearToken } from '../api/client';
+import logo from '../assets/image.png';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard' },
@@ -22,42 +23,55 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-white text-black flex">
       {/* Sidebar */}
-      <aside className="fixed top-0 left-0 w-56 h-full bg-gray-900 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-lg font-bold">DeFAI</h1>
-          <p className="text-xs text-gray-500">BSC Testnet Agent</p>
+      <aside className="fixed top-0 left-0 w-64 h-full bg-white border-r-2 border-black flex flex-col z-50">
+        {/* Logo */}
+        <div className="border-b-2 border-black">
+          <img src={logo} alt="DeFAI" className="w-full h-auto object-contain block" />
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`block px-3 py-2 rounded-lg text-sm transition ${
-                location.pathname === item.path
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
+        {/* Network badge */}
+        <div className="px-5 py-3 border-b-2 border-black">
+          <span className="inline-flex items-center gap-1.5 bg-black text-[#F5C518] text-xs font-mono font-bold px-3 py-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#F5C518] animate-pulse"></span>
+            BNB CHAIN · TESTNET
+          </span>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 p-4 space-y-1">
+          {NAV_ITEMS.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`block px-4 py-3 font-mono text-sm font-bold transition-all border-2 ${
+                  isActive
+                    ? 'bg-[#F5C518] text-black border-black'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-[#F5C518]'
+                }`}
+              >
+                {item.label.toUpperCase()}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="p-3 border-t border-gray-800">
+        {/* Logout */}
+        <div className="p-4 border-t-2 border-black">
           <button
             onClick={handleLogout}
-            className="w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition"
+            className="w-full px-4 py-3 text-sm font-mono font-bold border-2 border-black bg-white text-black hover:bg-black hover:text-[#F5C518] transition-all"
           >
-            Logout
+            LOGOUT
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="ml-56 p-8">
+      <main className="ml-64 flex-1 min-h-screen bg-white">
         <Outlet />
       </main>
     </div>
