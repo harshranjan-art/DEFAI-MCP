@@ -518,6 +518,9 @@ Bot: Recent trades:
 | Telegram 400 "can't parse entities" | Underscores in position IDs (e.g. `pos_abc123`) treated as Markdown italic markers | Never pass `{ parse_mode: 'Markdown' }` for plain-text replies |
 | AgentRouter crashes on null args | Groq sends `"null"` for parameterless tools | Parse args as `JSON.parse(args) ?? {}` |
 | Insufficient BNB | Smart account needs testnet BNB | Fund via [BSC Testnet Faucet](https://www.bnbchain.org/en/testnet-faucet) |
+| Swap returns near-zero output | `amountOutMin` was hardcoded to `0` — router accepts any slippage including 99% loss | Fixed: `calcAmountOutMin()` calls on-chain `getAmountsOut` and applies 5% tolerance. Swaps now revert if the pool can't meet the minimum. |
+| Balance check passes for USDT but deposit fails | `venus.getBalance()` always read native BNB balance regardless of token argument | Fixed: now calls ERC-20 `balanceOf` for non-BNB tokens (`src/adapters/venus.ts`) |
+| Token→BNB / Token→Token swap uses wrong amount | `parseEther(amount)` assumed 18 decimals for all tokens | Fixed: `getTokenDecimals()` reads actual `decimals()` from contract; uses `parseUnits(amount, decimals)` |
 
 ### Demo user journey
 
