@@ -34,6 +34,46 @@ This isn't a chatbot wrapper. It's a **full DeFi execution layer** exposed as MC
 
 ---
 
+## User Journey
+
+```mermaid
+journey
+    title DeFAI MCP — End-to-End User Experience
+    section Discover
+      Find DeFAI MCP on GitHub / Hackathon: 5: User
+      Read README, understand MCP + BNB Chain: 4: User
+    section Install
+      Install Node.js 18+: 3: User
+      Clone repo + npm install: 3: User
+      Get API keys (Pimlico, Groq, Telegram): 3: User
+      Configure .env file: 3: User
+    section Register
+      Start backend (npm run dev): 5: User
+      Open dashboard (localhost:5173): 5: User
+      Paste private key → get UUID + API Key: 5: User, Dashboard
+      Smart Account created on BSC Testnet: 5: Dashboard
+    section Fund
+      Copy Smart Account address: 4: User
+      Request testnet BNB from faucet: 4: User
+      Confirm balance on BSCScan: 4: User
+    section Use MCP
+      Build project (npm run build): 4: User
+      Add defai block to Claude Desktop config: 4: User
+      Restart Claude Desktop: 3: User
+      Ask Claude to scan markets / deposit / run arb: 5: User, Claude
+      Claude calls MCP tools, executes on-chain: 5: Claude, MCP
+    section Use Telegram
+      Connect Telegram bot with /connect UUID: 5: User
+      Send natural language commands to bot: 5: User
+      Bot routes via LLM → executes strategy: 5: Bot
+    section Monitor
+      Log in to dashboard with API Key: 5: User
+      View portfolio, positions, trade history: 5: User, Dashboard
+      Receive APY drop / arb alerts via Telegram: 5: Dashboard, Bot
+```
+
+---
+
 ## 19 MCP Tools — Full DeFi Toolkit for AI Agents
 
 | Tool | What it does |
