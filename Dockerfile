@@ -1,5 +1,5 @@
 # Stage 1: Build backend
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package*.json ./
@@ -10,7 +10,7 @@ COPY abis/ ./abis/
 RUN npx tsc
 
 # Stage 2: Build dashboard
-FROM node:18-alpine AS dashboard-builder
+FROM node:22-alpine AS dashboard-builder
 WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
 RUN npm ci
@@ -18,7 +18,7 @@ COPY dashboard/ ./
 RUN npm run build
 
 # Stage 3: Production
-FROM node:18-alpine
+FROM node:22-alpine
 RUN apk add --no-cache python3 make g++ wget
 WORKDIR /app
 COPY package*.json ./
