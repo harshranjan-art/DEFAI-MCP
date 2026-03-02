@@ -5,7 +5,8 @@ import { startArbWatcher } from './monitor/arbWatcher';
 import { startSnapshotLogger } from './monitor/snapshotLogger';
 import { startPositionHealthMonitor } from './monitor/positionHealth';
 import { startAutoArbExecutor } from './monitor/autoArbExecutor';
-import { startApiServer } from './api/server';
+import { startApiServer, app as apiApp } from './api/server';
+import { mountMcpSseRoutes } from './mcp/server';
 import * as userResolver from './core/userResolver';
 import * as walletManager from './core/walletManager';
 import { logger } from './utils/logger';
@@ -28,7 +29,10 @@ async function main() {
   startPositionHealthMonitor();
   startAutoArbExecutor();
 
-  // Start REST API server
+  // Mount MCP SSE routes on the API app (shares port 3002)
+  mountMcpSseRoutes(apiApp);
+
+  // Start REST API server (serves API + MCP SSE + dashboard on port 3002)
   startApiServer();
 
   logger.info('DeFAI — all systems running');

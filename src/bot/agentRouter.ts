@@ -15,7 +15,17 @@ import { executeRiskConfig } from '../mcp/tools/riskConfig';
 import { executeSetAlert, executeGetAlerts } from '../mcp/tools/setAlerts';
 import { logger } from '../utils/logger';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groq: Groq | null = null;
+
+function getGroq(): Groq {
+  if (!groq) {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error('GROQ_API_KEY is not set — Telegram agent router disabled');
+    }
+    groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  }
+  return groq;
+}
 
 const TOOLS: Groq.Chat.ChatCompletionTool[] = [
   {
@@ -393,7 +403,7 @@ export async function route(userId: string, message: string): Promise<string> {
   try {
     const history = histories.get(userId) || [];
 
-    const response = await groq.chat.completions.create({
+    const response = await getGroq().chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },

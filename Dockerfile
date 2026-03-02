@@ -30,7 +30,6 @@ COPY loadEnv.js ./
 RUN mkdir -p data
 
 EXPOSE 3002
-EXPOSE 3001
 
 ENV NODE_ENV=production
 

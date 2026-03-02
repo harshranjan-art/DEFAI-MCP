@@ -36,18 +36,18 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// In production, serve the built dashboard as static files
-if (process.env.NODE_ENV === 'production') {
-  const dashboardPath = path.join(__dirname, '..', 'dashboard', 'dist');
-  app.use(express.static(dashboardPath));
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(dashboardPath, 'index.html'));
-    }
-  });
-}
-
 export function startApiServer(port: number = 3002): void {
+  // Register SPA catch-all LAST so /sse, /messages, and /api/* routes take priority
+  if (process.env.NODE_ENV === 'production') {
+    const dashboardPath = path.join(__dirname, '..', 'dashboard', 'dist');
+    app.use(express.static(dashboardPath));
+    app.get('*', (req, res) => {
+      if (!req.path.startsWith('/api') && !req.path.startsWith('/sse') && !req.path.startsWith('/messages')) {
+        res.sendFile(path.join(dashboardPath, 'index.html'));
+      }
+    });
+  }
+
   app.listen(port, () => {
     logger.info('REST API server started on port %d', port);
   });

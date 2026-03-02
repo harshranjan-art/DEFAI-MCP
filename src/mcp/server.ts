@@ -506,10 +506,21 @@ async function startSse(port: number = 3001) {
   startAutoArbExecutor();
 
   const app = express();
+  mountMcpSseRoutes(app);
+
+  app.listen(port, () => {
+    logger.info('DeFAI MCP server started (SSE transport on port %d)', port);
+  });
+}
+
+/**
+ * Mount MCP SSE routes (/sse and /messages) on an existing Express app.
+ * Used by index.ts to share port 3002 with the REST API.
+ */
+function mountMcpSseRoutes(app: express.Application) {
   let sseTransport: SSEServerTransport | null = null;
 
   app.get('/sse', async (req, res) => {
-    // Authenticate via Bearer token (API key)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       const apiKey = authHeader.slice(7);
@@ -532,23 +543,24 @@ async function startSse(port: number = 3001) {
     await sseTransport.handlePostMessage(req, res);
   });
 
-  app.listen(port, () => {
-    logger.info('DeFAI MCP server started (SSE transport on port %d)', port);
-  });
+  logger.info('MCP SSE routes mounted (/sse, /messages)');
 }
 
-const transportMode = process.env.MCP_TRANSPORT || 'stdio';
+// Auto-start only when run directly (npm run mcp / npm run mcp:sse)
+if (require.main === module) {
+  const transportMode = process.env.MCP_TRANSPORT || 'stdio';
 
-if (transportMode === 'sse') {
-  startSse().catch((e) => {
-    logger.error('MCP SSE startup failed: %s', e.message);
-    process.exit(1);
-  });
-} else {
-  startStdio().catch((e) => {
-    logger.error('MCP stdio startup failed: %s', e.message);
-    process.exit(1);
-  });
+  if (transportMode === 'sse') {
+    startSse().catch((e) => {
+      logger.error('MCP SSE startup failed: %s', e.message);
+      process.exit(1);
+    });
+  } else {
+    startStdio().catch((e) => {
+      logger.error('MCP stdio startup failed: %s', e.message);
+      process.exit(1);
+    });
+  }
 }
 
-export { server, sessionUsers, getUserId };
+export { server, sessionUsers, getUserId, startSse as startMcpSse, mountMcpSseRoutes };

@@ -9,10 +9,11 @@ import { setBotRef } from '../monitor/alertDispatcher';
 import { formatDepositResult } from '../mcp/tools/yieldDeposit';
 import 'dotenv/config';
 
-export const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+const token = process.env.TELEGRAM_BOT_TOKEN;
+export const bot = token ? new Telegraf(token) : null;
 
 // Wire bot reference for alert dispatcher (Telegram delivery)
-setBotRef(bot);
+if (bot) setBotRef(bot);
 
 /**
  * Resolve or create a user from Telegram context.
@@ -21,6 +22,8 @@ setBotRef(bot);
 function resolveUser(telegramId: number): string | null {
   return userResolver.resolveFromTelegram(telegramId);
 }
+
+if (bot) {
 
 // ─── /start — welcome + registration ───
 bot.start(async (ctx) => {
@@ -323,7 +326,13 @@ bot.on('text', async (ctx) => {
   }
 });
 
+} // end if (bot)
+
 export function startBot(): void {
+  if (!bot) {
+    logger.warn('TELEGRAM_BOT_TOKEN not set — Telegram bot disabled');
+    return;
+  }
   bot.launch();
   logger.info('Telegram bot launched');
 }
