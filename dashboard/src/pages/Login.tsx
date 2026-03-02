@@ -304,7 +304,7 @@ function buildGuide(userId?: string, apiKey?: string): GuideSection[] {
         "Authorization": "Bearer ${apiKey}"
       }` : `,
       "headers": {
-        "Authorization": "Bearer <your-uuid>"
+        "Authorization": "Bearer <your-api-key>"
       }`}
     }
   }
