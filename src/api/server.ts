@@ -41,7 +41,7 @@ export function startApiServer(port: number = 3002): void {
   if (process.env.NODE_ENV === 'production') {
     const dashboardPath = path.join(__dirname, '..', 'dashboard', 'dist');
     app.use(express.static(dashboardPath));
-    app.get('*', (req, res) => {
+    app.get('/{*splat}', (req, res) => {
       if (!req.path.startsWith('/api') && !req.path.startsWith('/sse') && !req.path.startsWith('/messages')) {
         res.sendFile(path.join(dashboardPath, 'index.html'));
       }
