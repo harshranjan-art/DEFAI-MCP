@@ -39,7 +39,7 @@ app.get('/api/health', (_req, res) => {
 export function startApiServer(port: number = 3002): void {
   // Register SPA catch-all LAST so /sse, /messages, and /api/* routes take priority
   if (process.env.NODE_ENV === 'production') {
-    const dashboardPath = path.join(__dirname, '..', 'dashboard', 'dist');
+    const dashboardPath = path.join(__dirname, '..', '..', 'dashboard', 'dist');
     app.use(express.static(dashboardPath));
     app.get('/{*splat}', (req, res) => {
       if (!req.path.startsWith('/api') && !req.path.startsWith('/sse') && !req.path.startsWith('/messages')) {
