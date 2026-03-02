@@ -378,14 +378,33 @@ If you want to test a live deposit:
 1. Fund your smart account first (Step 8)
 2. Then ask Claude: `deposit 0.01 BNB to best yield`
 
-**MCP with SSE transport** (optional — for web apps or remote AI agents only):
+**MCP with SSE transport — Connect to the hosted server (no local setup needed):**
 
-```bash
-# Terminal 3 (optional): MCP server with SSE transport (HTTP on port 3001)
-npm run mcp:sse
+If the DeFAI server is deployed (e.g. on Railway), you can connect Claude Desktop directly to the remote MCP SSE endpoint without cloning the repo or running anything locally.
+
+Add this to your Claude Desktop config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "defai": {
+      "url": "https://defai-mcp-production.up.railway.app/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-key>"
+      }
+    }
+  }
+}
 ```
 
-Then connect with your API key as a Bearer token. This is **not needed** for normal Claude Desktop use.
+Replace `<your-api-key>` with the API key you received after registering on the dashboard (`dfai_k_...`).
+
+> **No cloning, no `npm install`, no build step.** Just register on the dashboard, get your API key, and point Claude at the SSE URL.
+
+For local SSE development:
+```bash
+npm run mcp:sse   # Starts SSE server on port 3001
+```
 
 ---
 

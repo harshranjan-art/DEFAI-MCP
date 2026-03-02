@@ -110,40 +110,333 @@ const ARCH_LAYERS = [
   },
 ];
 
-const SETUP_STEPS = [
-  {
-    num: 1,
-    title: 'FUND YOUR SMART ACCOUNT',
-    desc: 'Copy your Smart Account address above. Go to the BSC Testnet Faucet and request free testnet BNB. You need a small amount for on-chain transactions.',
-    link: { label: 'BSC Testnet Faucet', url: 'https://testnet.bnbchain.org/faucet-smart' },
-  },
-  {
-    num: 2,
-    title: 'SET UP CLAUDE DESKTOP',
-    desc: 'Build the project with "npm run build". Then add the DeFAI MCP config to your Claude Desktop config file with your User ID in the DEFAI_USER_ID field. Restart Claude completely.',
-  },
-  {
-    num: 3,
-    title: 'TEST MCP TOOLS IN CLAUDE',
-    desc: 'Open a new Claude conversation and try: "ping the defai server", "show my portfolio", "scan all markets". All 19 DeFi tools should appear automatically.',
-  },
-  {
-    num: 4,
-    title: 'CONNECT TELEGRAM',
-    desc: 'Open the DeFAI Telegram bot and send /connect followed by your User ID. You\'ll get AI-powered natural language DeFi commands.',
-    link: { label: 'Open Telegram Bot', url: 'https://t.me/defai_mcp_tele_bot' },
-  },
-  {
-    num: 5,
-    title: 'LOG IN TO DASHBOARD',
-    desc: 'Use your API Key above to log in. View your portfolio, trades, markets, and alerts \u2014 all synced across every transport in real-time.',
-  },
-  {
-    num: 6,
-    title: 'START USING DEFI',
-    desc: 'Try depositing into yield, scanning for arbitrage, or opening a delta-neutral position. Works identically from Claude, Telegram, or the dashboard.',
-  },
-];
+interface GuideSection {
+  id: string;
+  title: string;
+  content: React.ReactNode;
+}
+
+function CautionBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-2 border-black bg-[#F5C518] p-3 my-3">
+      <div className="flex gap-2 items-start">
+        <span className="font-mono font-bold text-black text-sm shrink-0">!!</span>
+        <p className="font-mono text-xs text-black leading-relaxed">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+function CodeBlock({ children }: { children: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="relative border-2 border-black bg-black p-3 my-2">
+      <pre className="font-mono text-xs text-[#F5C518] whitespace-pre-wrap break-all">{children}</pre>
+      <button
+        onClick={() => { navigator.clipboard.writeText(children); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+        className="absolute top-2 right-2 px-2 py-0.5 font-mono text-xs font-bold border border-[#F5C518] text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all"
+      >
+        {copied ? 'COPIED' : 'COPY'}
+      </button>
+    </div>
+  );
+}
+
+function InfoBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-l-4 border-[#F5C518] bg-[#F5F5F5] p-3 my-3">
+      <p className="font-mono text-xs text-gray-700 leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function buildGuide(userId?: string, apiKey?: string): GuideSection[] {
+  return [
+    {
+      id: 'what-is-defai',
+      title: 'WHAT IS DEFAI?',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            DeFAI is an <strong>autonomous DeFi agent</strong> on BNB Chain (BSC Testnet). It lets you manage DeFi positions using AI assistants like Claude, a Telegram bot, or this dashboard.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+            {[
+              { label: 'Yield Farming', desc: 'Auto-deposit into the highest APY across 60+ pools' },
+              { label: 'Token Swaps', desc: 'Swap BNB, USDT, and other tokens via PancakeSwap' },
+              { label: 'Arbitrage', desc: 'Detect and execute cross-DEX price differences' },
+              { label: 'Delta-Neutral', desc: 'Hedged positions that earn funding yield' },
+              { label: 'Gasless Transactions', desc: 'Zero gas fees via ERC-4337 Account Abstraction' },
+              { label: 'Portfolio Tracking', desc: 'Real-time PnL, positions, and trade history' },
+            ].map(f => (
+              <div key={f.label} className="border border-black p-2">
+                <p className="font-mono text-xs font-bold text-black">{f.label}</p>
+                <p className="font-mono text-xs text-gray-500">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+          <InfoBox>
+            This runs on <strong>BSC Testnet</strong> (Chain 97). All tokens are testnet tokens with no real value. Perfect for trying out DeFi strategies risk-free.
+          </InfoBox>
+        </div>
+      ),
+    },
+    {
+      id: 'generate-key',
+      title: 'GENERATE A PRIVATE KEY',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            You need an Ethereum-compatible private key to create your Smart Account. If you already have one for testing, skip to the next step.
+          </p>
+          <p className="font-mono text-xs font-bold text-black mt-3">Option A: Using your terminal</p>
+          <CodeBlock>openssl rand -hex 32</CodeBlock>
+          <p className="font-mono text-xs text-gray-500">This outputs 64 hex characters — that is your private key.</p>
+
+          <p className="font-mono text-xs font-bold text-black mt-3">Option B: Using Node.js</p>
+          <CodeBlock>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</CodeBlock>
+
+          <p className="font-mono text-xs font-bold text-black mt-3">Option C: Using Python</p>
+          <CodeBlock>python3 -c "import secrets; print(secrets.token_hex(32))"</CodeBlock>
+
+          <CautionBox>
+            NEVER use a wallet that holds real mainnet funds. Generate a fresh key for this testnet agent. This key controls your BSC Testnet Smart Account only.
+          </CautionBox>
+          <CautionBox>
+            Save your private key somewhere safe. You will paste it once during registration, after which it is encrypted with AES-256-GCM and never stored in plaintext. You cannot recover it from the server.
+          </CautionBox>
+        </div>
+      ),
+    },
+    {
+      id: 'register',
+      title: 'REGISTER ON THE DASHBOARD',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            Scroll down to the <strong>REGISTER</strong> tab on this page. Paste your private key and click Register.
+          </p>
+          <p className="font-mono text-xs text-gray-700 leading-relaxed">
+            After registration you will receive three things:
+          </p>
+          <div className="border-2 border-black divide-y-2 divide-black">
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-black">Smart Account Address</p>
+              <p className="font-mono text-xs text-gray-500">Your gasless wallet on BSC Testnet (ERC-4337). This is where you send testnet BNB.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-black">User ID (UUID)</p>
+              <p className="font-mono text-xs text-gray-500">Your identity across all platforms — used in Claude config and Telegram /connect.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-black">API Key (dfai_k_...)</p>
+              <p className="font-mono text-xs text-gray-500">Used to log in to this dashboard and authenticate MCP SSE connections.</p>
+            </div>
+          </div>
+          <CautionBox>
+            Copy and save your User ID and API Key immediately. The API Key is shown only once during registration.
+          </CautionBox>
+        </div>
+      ),
+    },
+    {
+      id: 'fund',
+      title: 'FUND YOUR SMART ACCOUNT',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            Your Smart Account needs testnet BNB to execute on-chain transactions (deposits, swaps, etc.). Gas is sponsored by Pimlico, but you still need BNB as the token you trade with.
+          </p>
+          <div className="border-2 border-black p-3 space-y-2">
+            <p className="font-mono text-xs font-bold text-black">Steps:</p>
+            <p className="font-mono text-xs text-gray-700">1. Copy your Smart Account address from the registration result above</p>
+            <p className="font-mono text-xs text-gray-700">2. Go to the BSC Testnet Faucet</p>
+            <p className="font-mono text-xs text-gray-700">3. Paste your address and request testnet BNB</p>
+            <p className="font-mono text-xs text-gray-700">4. Verify on BSCScan that the balance arrived</p>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <a
+              href="https://testnet.bnbchain.org/faucet-smart"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs font-bold bg-[#F5C518] text-black border-2 border-black px-3 py-1.5 hover:bg-black hover:text-[#F5C518] transition-all"
+            >
+              BSC FAUCET
+            </a>
+            <a
+              href="https://testnet.bscscan.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs font-bold bg-white text-black border-2 border-black px-3 py-1.5 hover:bg-black hover:text-[#F5C518] transition-all"
+            >
+              BSCSCAN
+            </a>
+          </div>
+          <InfoBox>Testnet BNB is free and has no real value. You can request more from the faucet at any time.</InfoBox>
+        </div>
+      ),
+    },
+    {
+      id: 'connect-claude',
+      title: 'CONNECT CLAUDE DESKTOP',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            Connect Claude Desktop to DeFAI so you can control your DeFi positions using natural language. <strong>No local setup required</strong> — Claude connects directly to the hosted server.
+          </p>
+          <p className="font-mono text-xs font-bold text-black">1. Open your Claude Desktop config file:</p>
+          <div className="border-2 border-black divide-y divide-black">
+            <div className="p-2 flex justify-between">
+              <span className="font-mono text-xs text-gray-500">macOS</span>
+              <span className="font-mono text-xs text-black">~/Library/Application Support/Claude/claude_desktop_config.json</span>
+            </div>
+            <div className="p-2 flex justify-between">
+              <span className="font-mono text-xs text-gray-500">Windows</span>
+              <span className="font-mono text-xs text-black">%APPDATA%\Claude\claude_desktop_config.json</span>
+            </div>
+          </div>
+          <p className="font-mono text-xs font-bold text-black mt-3">2. Add the DeFAI MCP server block:</p>
+          <CodeBlock>{`{
+  "mcpServers": {
+    "defai": {
+      "url": "https://defai-mcp-production.up.railway.app/sse"${apiKey ? `,
+      "headers": {
+        "Authorization": "Bearer ${apiKey}"
+      }` : `,
+      "headers": {
+        "Authorization": "Bearer <your-uuid>"
+      }`}
+    }
+  }
+}`}</CodeBlock>
+          <p className="font-mono text-xs font-bold text-black mt-3">3. Restart Claude Desktop completely (Cmd+Q / Alt+F4, then reopen)</p>
+          <InfoBox>
+            Claude will automatically discover all 16 DeFi tools. Try saying: "ping the defai server" or "scan all markets".
+          </InfoBox>
+        </div>
+      ),
+    },
+    {
+      id: 'connect-telegram',
+      title: 'CONNECT TELEGRAM (OPTIONAL)',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            Link your Telegram account for natural language DeFi commands and real-time alerts (APY drops, arb opportunities, position health).
+          </p>
+          <div className="border-2 border-black p-3 space-y-2">
+            <p className="font-mono text-xs text-gray-700">1. (https://t.me/defai_mcp_tele_bot) — or search `@defai_mcp_tele_bot` in Telegram.</p>
+            <p className="font-mono text-xs text-gray-700">2. Send <strong>/start</strong></p>
+            <p className="font-mono text-xs text-gray-700">3. Send <strong>/connect {userId || '<your-user-id>'}</strong></p>
+            <p className="font-mono text-xs text-gray-700">4. Send <strong>/portfolio</strong> to verify it works</p>
+          </div>
+          {userId && (
+            <div className="border-2 border-black bg-[#F5F5F5] px-3 py-2 flex items-center mt-2">
+              <code className="font-mono text-xs break-all flex-1">/connect {userId}</code>
+            </div>
+          )}
+          <a
+            href="https://t.me/defai_mcp_tele_bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex font-mono text-xs font-bold bg-black text-[#F5C518] border-2 border-black px-3 py-1.5 hover:bg-[#F5C518] hover:text-black transition-all mt-2"
+          >
+            OPEN TELEGRAM BOT
+          </a>
+          <InfoBox>
+            The Telegram bot uses Groq Llama 3.3 70B as an AI agent router. You can send natural language like "deposit 0.05 BNB" or "how's my portfolio?".
+          </InfoBox>
+        </div>
+      ),
+    },
+    {
+      id: 'make-trades',
+      title: 'MAKING YOUR FIRST TRADES',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            Once funded, here are some things to try from Claude or Telegram:
+          </p>
+          <div className="border-2 border-black divide-y-2 divide-black">
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-[#F5C518] bg-black inline-block px-2 py-0.5 mb-1">SCAN MARKETS</p>
+              <p className="font-mono text-xs text-gray-600">"Scan all markets" — see live APYs, DEX prices, funding rates, and arb opportunities across 60+ pools.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-[#F5C518] bg-black inline-block px-2 py-0.5 mb-1">YIELD DEPOSIT</p>
+              <p className="font-mono text-xs text-gray-600">"Deposit 0.01 BNB to best yield" — auto-selects Venus, Beefy, or DefiLlama for the highest APY.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-[#F5C518] bg-black inline-block px-2 py-0.5 mb-1">SWAP TOKENS</p>
+              <p className="font-mono text-xs text-gray-600">"Swap 0.01 BNB to USDT" — executes a real PancakeSwap V2 swap on testnet.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-[#F5C518] bg-black inline-block px-2 py-0.5 mb-1">ARBITRAGE</p>
+              <p className="font-mono text-xs text-gray-600">"Run arbitrage for 1 hour, stop at $5 loss" — autonomous bot scans every 30s across DEXes.</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-xs font-bold text-[#F5C518] bg-black inline-block px-2 py-0.5 mb-1">PORTFOLIO</p>
+              <p className="font-mono text-xs text-gray-600">"Show my portfolio" — view all positions, PnL, yield earned, and smart account balance.</p>
+            </div>
+          </div>
+          <CautionBox>
+            All transactions run on BSC Testnet with testnet tokens. There is no real money at risk. However, treat your private key with the same care as a real key — good security habits matter.
+          </CautionBox>
+          <InfoBox>
+            Everything you do from Claude, Telegram, or the API shows up on this dashboard in real-time. All transports share the same database.
+          </InfoBox>
+        </div>
+      ),
+    },
+    {
+      id: 'how-it-works',
+      title: 'HOW IT ALL WORKS',
+      content: (
+        <div className="space-y-3">
+          <p className="font-mono text-sm text-gray-700 leading-relaxed">
+            DeFAI uses <strong>ERC-4337 Account Abstraction</strong> to give every user a Smart Account on BSC Testnet. All transactions are gasless — Pimlico's Paymaster sponsors the gas fees.
+          </p>
+          <div className="border-2 border-black p-4 bg-[#F5F5F5]">
+            <pre className="font-mono text-xs text-black whitespace-pre leading-relaxed">{`You (Claude / Telegram / Dashboard)
+   |
+   v
+Core Engine (risk checks, routing)
+   |
+   v
+Strategy Layer (yield, arb, delta-neutral)
+   |
+   v
+Protocol Adapters (Venus, PancakeSwap)
+   |
+   v
+BSC Testnet (Smart Account + Pimlico Paymaster)`}</pre>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+            <div className="border border-black p-2">
+              <p className="font-mono text-xs font-bold text-black">Venus</p>
+              <p className="font-mono text-xs text-gray-500">Real testnet lending/borrowing (LIVE)</p>
+            </div>
+            <div className="border border-black p-2">
+              <p className="font-mono text-xs font-bold text-black">PancakeSwap V2</p>
+              <p className="font-mono text-xs text-gray-500">Real testnet token swaps (LIVE)</p>
+            </div>
+            <div className="border border-black p-2">
+              <p className="font-mono text-xs font-bold text-black">Thena / BiSwap</p>
+              <p className="font-mono text-xs text-gray-500">Real mainnet prices, simulated trades</p>
+            </div>
+            <div className="border border-black p-2">
+              <p className="font-mono text-xs font-bold text-black">Beefy / DefiLlama</p>
+              <p className="font-mono text-xs text-gray-500">Real mainnet APYs, simulated deposits</p>
+            </div>
+          </div>
+          <InfoBox>
+            Your private key is encrypted at rest with AES-256-GCM. It never appears in chat, config files, or API responses. Only the server can decrypt it at runtime to sign transactions.
+          </InfoBox>
+        </div>
+      ),
+    },
+  ];
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -174,7 +467,7 @@ export default function Login() {
   const [privateKey, setPrivateKey] = useState('');
   const [registerResult, setRegisterResult] = useState<RegisterResult | null>(null);
   const [showGuide, setShowGuide] = useState(false);
-  const [guideStep, setGuideStep] = useState(0);
+  const [guideSection, setGuideSection] = useState(0);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,7 +552,16 @@ export default function Login() {
               >
                 GET STARTED
               </button>
+              <button
+                onClick={() => { setGuideSection(0); setShowGuide(true); }}
+                className="font-display text-lg px-10 py-4 border-2 border-black bg-[#F5C518] text-black hover:bg-black hover:text-[#F5C518] transition-all"
+              >
+                QUICK SETUP GUIDE
+              </button>
             </div>
+            
+              
+            
           </div>
         </section>
       </div>
@@ -338,7 +640,7 @@ export default function Login() {
 
                 {/* Setup guide trigger */}
                 <button
-                  onClick={() => { setGuideStep(0); setShowGuide(true); }}
+                  onClick={() => { setGuideSection(0); setShowGuide(true); }}
                   className="w-full p-3 font-mono font-bold text-sm border-2 border-black bg-black text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all mb-6"
                 >
                   VIEW SETUP GUIDE &rarr;
@@ -649,105 +951,117 @@ export default function Login() {
       </footer>
 
       {/* ─── SETUP GUIDE MODAL ─── */}
-      {showGuide && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setShowGuide(false)}
-          />
+      {showGuide && (() => {
+        const guide = buildGuide(registerResult?.userId, registerResult?.apiKey);
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setShowGuide(false)}
+            />
 
-          {/* Modal */}
-          <div className="relative w-full max-w-lg mx-4 border-2 border-black bg-white shadow-[8px_8px_0px_0px_#F5C518]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b-2 border-black bg-black">
-              <div>
-                <p className="font-display text-lg text-[#F5C518] tracking-wide">SETUP GUIDE</p>
-                <p className="font-mono text-xs text-gray-400 mt-0.5">
-                  Step {guideStep + 1} of {SETUP_STEPS.length}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowGuide(false)}
-                className="w-8 h-8 flex items-center justify-center border-2 border-[#F5C518] text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all font-mono font-bold text-sm"
-              >
-                &times;
-              </button>
-            </div>
-
-            {/* Progress bar */}
-            <div className="h-1 bg-[#F5F5F5]">
-              <div
-                className="h-full bg-[#F5C518] transition-all duration-300"
-                style={{ width: `${((guideStep + 1) / SETUP_STEPS.length) * 100}%` }}
-              />
-            </div>
-
-            {/* Step content */}
-            <div className="p-6">
-              <div className="flex gap-4 items-start">
-                <div className="shrink-0 w-10 h-10 bg-[#F5C518] border-2 border-black flex items-center justify-center">
-                  <span className="font-mono font-bold text-lg text-black">{SETUP_STEPS[guideStep].num}</span>
+            {/* Modal */}
+            <div className="relative w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col border-2 border-black bg-white shadow-[8px_8px_0px_0px_#F5C518]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b-2 border-black bg-black shrink-0">
+                <div>
+                  <p className="font-display text-lg text-[#F5C518] tracking-wide">QUICK SETUP GUIDE</p>
+                  <p className="font-mono text-xs text-gray-400 mt-0.5">
+                    {guide[guideSection].title} &middot; {guideSection + 1} of {guide.length}
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm font-bold text-black mb-2">{SETUP_STEPS[guideStep].title}</p>
-                  <p className="font-mono text-sm text-gray-600 leading-relaxed">{SETUP_STEPS[guideStep].desc}</p>
-                  {SETUP_STEPS[guideStep].link && (
-                    <a
-                      href={SETUP_STEPS[guideStep].link!.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-3 font-mono text-xs font-bold bg-[#F5C518] text-black border-2 border-black px-3 py-1.5 hover:bg-black hover:text-[#F5C518] transition-all"
-                    >
-                      {SETUP_STEPS[guideStep].link!.label} &rarr;
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer nav */}
-            <div className="flex items-center justify-between px-6 py-4 border-t-2 border-black">
-              <button
-                onClick={() => setGuideStep((s) => s - 1)}
-                disabled={guideStep === 0}
-                className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-white text-black hover:bg-[#F5F5F5] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              >
-                &larr; BACK
-              </button>
-
-              {/* Step dots */}
-              <div className="flex gap-1.5">
-                {SETUP_STEPS.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setGuideStep(i)}
-                    className={`w-2.5 h-2.5 border border-black transition-all ${
-                      i === guideStep ? 'bg-[#F5C518]' : i < guideStep ? 'bg-black' : 'bg-white'
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {guideStep < SETUP_STEPS.length - 1 ? (
-                <button
-                  onClick={() => setGuideStep((s) => s + 1)}
-                  className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-black text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all"
-                >
-                  NEXT &rarr;
-                </button>
-              ) : (
                 <button
                   onClick={() => setShowGuide(false)}
-                  className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-[#F5C518] text-black hover:bg-black hover:text-[#F5C518] transition-all"
+                  className="w-8 h-8 flex items-center justify-center border-2 border-[#F5C518] text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all font-mono font-bold text-sm"
                 >
-                  FINISH
+                  &times;
                 </button>
-              )}
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1 bg-[#F5F5F5] shrink-0">
+                <div
+                  className="h-full bg-[#F5C518] transition-all duration-300"
+                  style={{ width: `${((guideSection + 1) / guide.length) * 100}%` }}
+                />
+              </div>
+
+              {/* Sidebar + Content */}
+              <div className="flex flex-1 min-h-0">
+                {/* Section nav sidebar */}
+                <div className="hidden md:block w-48 border-r-2 border-black bg-[#F5F5F5] overflow-y-auto shrink-0">
+                  {guide.map((section, i) => (
+                    <button
+                      key={section.id}
+                      onClick={() => setGuideSection(i)}
+                      className={`w-full text-left px-3 py-2.5 font-mono text-xs border-b border-black/10 transition-all ${
+                        i === guideSection
+                          ? 'bg-[#F5C518] text-black font-bold'
+                          : 'text-gray-600 hover:bg-white'
+                      }`}
+                    >
+                      <span className="font-bold mr-1.5">{i + 1}.</span>
+                      {section.title}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Content area */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="shrink-0 w-8 h-8 bg-[#F5C518] border-2 border-black flex items-center justify-center">
+                      <span className="font-mono font-bold text-sm text-black">{guideSection + 1}</span>
+                    </div>
+                    <h3 className="font-mono text-sm font-bold text-black">{guide[guideSection].title}</h3>
+                  </div>
+                  {guide[guideSection].content}
+                </div>
+              </div>
+
+              {/* Footer nav */}
+              <div className="flex items-center justify-between px-6 py-3 border-t-2 border-black shrink-0">
+                <button
+                  onClick={() => setGuideSection((s) => s - 1)}
+                  disabled={guideSection === 0}
+                  className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-white text-black hover:bg-[#F5F5F5] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  &larr; BACK
+                </button>
+
+                {/* Section dots */}
+                <div className="flex gap-1.5">
+                  {guide.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setGuideSection(i)}
+                      className={`w-2.5 h-2.5 border border-black transition-all ${
+                        i === guideSection ? 'bg-[#F5C518]' : i < guideSection ? 'bg-black' : 'bg-white'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {guideSection < guide.length - 1 ? (
+                  <button
+                    onClick={() => setGuideSection((s) => s + 1)}
+                    className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-black text-[#F5C518] hover:bg-[#F5C518] hover:text-black transition-all"
+                  >
+                    NEXT &rarr;
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowGuide(false)}
+                    className="px-4 py-2 font-mono text-xs font-bold border-2 border-black bg-[#F5C518] text-black hover:bg-black hover:text-[#F5C518] transition-all"
+                  >
+                    DONE
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
