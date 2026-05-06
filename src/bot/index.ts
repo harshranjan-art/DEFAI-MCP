@@ -6,7 +6,7 @@ import * as engine from '../core/engine';
 import * as userResolver from '../core/userResolver';
 import * as walletManager from '../core/walletManager';
 import { setBotRef } from '../monitor/alertDispatcher';
-import { formatDepositResult } from '../mcp/tools/yieldDeposit';
+import { executeYieldDeposit, formatDepositResult } from '../mcp/tools/yieldDeposit';
 import 'dotenv/config';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -126,8 +126,8 @@ bot.command('deposit', async (ctx) => {
 
   await ctx.reply(`Depositing ${amount} ${token} into best yield protocol...`);
   try {
-    const result = await engine.yieldDeposit(userId, token, amount);
-    await ctx.reply(formatDepositResult(result));
+    const text = await executeYieldDeposit(userId, token, amount);
+    await ctx.reply(text);
   } catch (e: any) {
     logger.error('Bot /deposit error: %s', e.message);
     await ctx.reply(`Error: ${e.message}`);

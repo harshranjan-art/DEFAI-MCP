@@ -156,16 +156,18 @@ server.tool(
 // ─── TOOL: yield_deposit ───
 server.tool(
   'yield_deposit',
-  'Deposit tokens into the highest-APY protocol. Compares Venus, Beefy, DefiLlama and picks the best.',
+  'Deposit tokens into the highest-APY protocol. Compares Venus, Beefy, DefiLlama and picks the best. Two-phase: first call returns a confirmation token; call again with confirmation_token to execute.',
   {
     token: z.string().describe('Token symbol (e.g., BNB, USDT)'),
     amount: z.string().describe('Amount to deposit (e.g., "0.1")'),
     protocol: z.string().optional().describe('Force a specific protocol (optional — auto-selects best if omitted)'),
+    client_op_id: z.string().optional().describe('Idempotency key — pass the same value on retry to dedupe'),
+    confirmation_token: z.string().optional().describe('Token from a prior needsConfirmation reply; required to execute'),
   },
-  async ({ token, amount, protocol }, extra) => {
+  async ({ token, amount, protocol, client_op_id, confirmation_token }, extra) => {
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
-      const result = await executeYieldDeposit(userId, token, amount, protocol);
+      const result = await executeYieldDeposit(userId, token, amount, protocol, { client_op_id, confirmation_token });
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
@@ -230,16 +232,18 @@ server.tool(
 // ─── TOOL: swap_tokens ───
 server.tool(
   'swap_tokens',
-  'Swap tokens via PancakeSwap V2 on BSC Testnet. Supports BNB↔USDT and token-to-token swaps.',
+  'Swap tokens via PancakeSwap V2 on BSC Testnet. Two-phase: first call returns a confirmation token; call again with confirmation_token to execute.',
   {
     from_token: z.string().describe('Token to sell (e.g., BNB, USDT)'),
     to_token: z.string().describe('Token to buy (e.g., USDT, BNB)'),
     amount: z.string().describe('Amount of from_token to swap (e.g., "0.01")'),
+    client_op_id: z.string().optional().describe('Idempotency key — pass the same value on retry to dedupe'),
+    confirmation_token: z.string().optional().describe('Token from a prior needsConfirmation reply; required to execute'),
   },
-  async ({ from_token, to_token, amount }, extra) => {
+  async ({ from_token, to_token, amount, client_op_id, confirmation_token }, extra) => {
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
-      const result = await executeSwapTokens(userId, from_token, to_token, amount);
+      const result = await executeSwapTokens(userId, from_token, to_token, amount, { client_op_id, confirmation_token });
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
@@ -250,17 +254,19 @@ server.tool(
 // ─── TOOL: send_tokens ───
 server.tool(
   'send_tokens',
-  'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address on BSC Testnet. Gasless via Pimlico paymaster.',
+  'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address on BSC Testnet. Gasless via Pimlico paymaster. Always two-phase — first call returns a confirmation token; call again with confirmation_token to execute.',
   {
     token: z.string().describe('Token to send: BNB, USDT, or WBNB'),
     amount: z.string().describe('Amount to send (e.g., "0.01")'),
     to_address: z.string().describe('Recipient wallet address (0x...)'),
+    client_op_id: z.string().optional().describe('Idempotency key — pass the same value on retry to dedupe'),
+    confirmation_token: z.string().optional().describe('Token from a prior needsConfirmation reply; required to execute'),
   },
-  async ({ token, amount, to_address }, extra) => {
+  async ({ token, amount, to_address, client_op_id, confirmation_token }, extra) => {
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
       await walletManager.activate(userId);
-      const result = await executeSendTokens(userId, token, amount, to_address);
+      const result = await executeSendTokens(userId, token, amount, to_address, { client_op_id, confirmation_token });
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };
@@ -290,16 +296,18 @@ server.tool(
 // ─── TOOL: delta_neutral_open ───
 server.tool(
   'delta_neutral_open',
-  'Open a delta-neutral position: buy spot + virtual short. Earns yield from positive funding rates while hedging price risk.',
+  'Open a delta-neutral position: buy spot + virtual short. Always two-phase — first call returns a confirmation token; call again with confirmation_token to execute.',
   {
     token: z.string().describe('Token to trade (e.g., BNB, ETH)'),
     notional_usd: z.string().describe('Notional size in USD (e.g., "100")'),
     max_funding_rate: z.number().optional().describe('Max acceptable funding rate % (optional)'),
+    client_op_id: z.string().optional().describe('Idempotency key — pass the same value on retry to dedupe'),
+    confirmation_token: z.string().optional().describe('Token from a prior needsConfirmation reply; required to execute'),
   },
-  async ({ token, notional_usd, max_funding_rate }, extra) => {
+  async ({ token, notional_usd, max_funding_rate, client_op_id, confirmation_token }, extra) => {
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
-      const result = await executeDeltaNeutralOpen(userId, token, notional_usd, max_funding_rate);
+      const result = await executeDeltaNeutralOpen(userId, token, notional_usd, max_funding_rate, { client_op_id, confirmation_token });
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };

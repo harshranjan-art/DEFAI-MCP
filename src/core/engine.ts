@@ -4,7 +4,7 @@
  * This centralizes validation, logging, and error handling.
  */
 
-import { encodeFunctionData, isAddress, parseEther } from 'viem';
+import { encodeFunctionData, parseEther } from 'viem';
 import { logger } from '../utils/logger';
 import * as positionTracker from './positionTracker';
 import * as tradeLogger from './tradeLogger';
@@ -22,6 +22,36 @@ import type { RiskConfig } from './riskManager';
 import type { Portfolio } from './positionTracker';
 import type { Trade } from './tradeLogger';
 
+// Phase 1 — typed boundary primitives
+import { EngineResult, ok, err, needsConfirmation, newTraceId } from './result';
+import { SwapInputSchema } from './schemas/swap';
+import { SendInputSchema } from './schemas/send';
+import { YieldDepositInputSchema } from './schemas/yield';
+import { DeltaOpenInputSchema } from './schemas/delta';
+import { checkTrade } from './idempotency';
+import { createConfirmation, consumeConfirmation, diffArgs } from './confirmations';
+
+// ─── Phase 1 helpers ───
+
+function firstZodIssue(error: any): string {
+  const issue = error?.issues?.[0];
+  if (!issue) return error?.message || 'validation failed';
+  const path = (issue.path || []).join('.');
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
+
+// Coarse USD price table for confirmation previews. Phase 4 wires this to live
+// CoinGecko snapshots; for now this is good enough to surface a sensible $X
+// preview without an extra HTTP call on the hot path.
+const TOKEN_USD: Record<string, number> = {
+  BNB: 600, WBNB: 600, USDT: 1, USDC: 1, BUSD: 1, CAKE: 2,
+};
+
+function estimateUsd(token: string, amount: string): number {
+  const px = TOKEN_USD[token.toUpperCase()] ?? 0;
+  return parseFloat(amount) * px;
+}
+
 // ─── Market Scanning ───
 
 export async function scanMarkets(category: 'yield' | 'prices' | 'funding_rates' | 'arbitrage' | 'all'): Promise<string> {
@@ -31,15 +61,69 @@ export async function scanMarkets(category: 'yield' | 'prices' | 'funding_rates'
 
 // ─── Yield ───
 
-export async function yieldDeposit(
-  userId: string,
-  token: string,
-  amount: string,
-  protocol?: string,
-): Promise<DepositResult> {
-  logger.info('Engine: yieldDeposit(%s, %s, %s, %s)', userId, token, amount, protocol || 'auto');
-  // TODO: risk check here once riskManager is implemented (Phase 5)
-  return yieldOptimizer.deposit(userId, token, amount, protocol);
+export interface YieldDepositData {
+  protocol: string;
+  apy: number;
+  amount: string;
+  token: string;
+  alternatives: { protocol: string; apy: number; isSimulated: boolean }[];
+  positionId?: string;
+  txHash?: string;
+}
+
+export async function yieldDeposit(rawInput: unknown): Promise<EngineResult<YieldDepositData>> {
+  const trace_id = newTraceId();
+  const parsed = YieldDepositInputSchema.safeParse(rawInput);
+  if (!parsed.success) return err('VALIDATION_ERROR', firstZodIssue(parsed.error), trace_id);
+  const input = parsed.data;
+  logger.info(
+    { trace_id, tool: 'yield_deposit', user_id: input.userId, token: input.token, amount: input.amount, protocol: input.protocol || 'auto' },
+    'engine.yieldDeposit',
+  );
+
+  const cached = checkTrade(input.client_op_id);
+  if (cached.hit) {
+    return err('IDEMPOTENCY_REPLAY', 'duplicate request — returning original result', trace_id, {
+      details: { tx_hash: cached.original.tx_hash, original_executed_at: cached.original.executed_at },
+    });
+  }
+
+  if (!input.confirmation_token) {
+    const preview = {
+      action: 'yield_deposit',
+      token: input.token,
+      amount: input.amount,
+      estimated_usd: estimateUsd(input.token, input.amount),
+      protocol: input.protocol || 'auto-pick highest APY',
+    };
+    const cfm = createConfirmation({ userId: input.userId, action: 'yield_deposit', args: input, preview });
+    return needsConfirmation({ action: 'yield_deposit', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
+  }
+  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'yield_deposit' });
+  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+  const drift = diffArgs(consumed, input as any, ['token', 'amount', 'protocol']);
+  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+
+  try {
+    const result = await yieldOptimizer.deposit(input.userId, input.token, input.amount, input.protocol);
+    if (!result.success) {
+      return err('PROTOCOL_UNAVAILABLE', result.message || 'yield deposit failed', trace_id, { retryable: true });
+    }
+    return ok(
+      {
+        protocol: result.protocol,
+        apy: result.apy,
+        amount: result.amount,
+        token: result.token,
+        alternatives: result.alternatives,
+        positionId: result.positionId,
+        txHash: result.txHash,
+      },
+      trace_id,
+    );
+  } catch (e: any) {
+    return err('INTERNAL_ERROR', e?.message || 'yield deposit failed', trace_id);
+  }
 }
 
 export async function yieldRotate(
@@ -74,45 +158,75 @@ export function getTradeHistory(userId: string, opts?: { limit?: number; type?: 
 
 // ─── Swaps ───
 
-export async function swapTokens(
-  userId: string,
-  fromToken: string,
-  toToken: string,
-  amount: string,
-): Promise<{ success: boolean; message: string; protocol: string; txHash?: string; effectivePrice?: number }> {
-  logger.info('Engine: swapTokens(%s, %s→%s, %s)', userId, fromToken, toToken, amount);
-  // TODO: risk check here once riskManager is implemented (Phase 5)
+export interface SwapData { txHash: string; protocol: string; fromToken: string; toToken: string; amount: string }
 
-  const wallet = walletManager.getClient(userId);
-  if (!wallet) {
-    return { success: false, message: 'Wallet not activated. Call wallet_setup first.', protocol: '' };
+export async function swapTokens(rawInput: unknown): Promise<EngineResult<SwapData>> {
+  const trace_id = newTraceId();
+  const parsed = SwapInputSchema.safeParse(rawInput);
+  if (!parsed.success) return err('VALIDATION_ERROR', firstZodIssue(parsed.error), trace_id);
+  const input = parsed.data;
+  logger.info(
+    { trace_id, tool: 'swap_tokens', user_id: input.userId, fromToken: input.fromToken, toToken: input.toToken, amount: input.amount },
+    'engine.swapTokens',
+  );
+
+  const cached = checkTrade(input.client_op_id);
+  if (cached.hit) {
+    return err('IDEMPOTENCY_REPLAY', 'duplicate request — returning original result', trace_id, {
+      details: { tx_hash: cached.original.tx_hash, original_executed_at: cached.original.executed_at },
+    });
   }
 
-  const txResult = await pancakeSwapAdapter.swap!(fromToken, toToken, amount, wallet.client, wallet.publicClient);
+  if (!input.confirmation_token) {
+    const preview = {
+      action: 'swap',
+      from: { token: input.fromToken, amount: input.amount },
+      to: { token: input.toToken },
+      protocol: 'PancakeSwap',
+      estimated_usd: estimateUsd(input.fromToken, input.amount),
+      slippage_cap_bps: 500,
+    };
+    const cfm = createConfirmation({ userId: input.userId, action: 'swap_tokens', args: input, preview });
+    return needsConfirmation({ action: 'swap_tokens', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
+  }
+  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'swap_tokens' });
+  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+  const drift = diffArgs(consumed, input as any, ['fromToken', 'toToken', 'amount']);
+  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
 
-  // Log the trade
+  let wallet;
+  try { wallet = walletManager.getClient(input.userId); }
+  catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
+
+  const txResult = await pancakeSwapAdapter.swap!(
+    input.fromToken,
+    input.toToken,
+    input.amount,
+    wallet.client,
+    wallet.publicClient,
+  );
+
+  // Log the trade carrying client_op_id so retries hit the idempotency check above.
   tradeLogger.logTrade({
-    user_id: userId,
+    user_id: input.userId,
     type: 'swap',
     protocol: 'PancakeSwap',
-    from_token: fromToken,
-    to_token: toToken,
-    from_amount: amount,
-    to_amount: '', // unknown until receipt parsed
+    from_token: input.fromToken,
+    to_token: input.toToken,
+    from_amount: input.amount,
+    to_amount: '',
     price_usd: 0,
-    tx_hash: txResult.txHash,
+    tx_hash: txResult.txHash || `0xfailed_${Date.now()}`,
+    client_op_id: input.client_op_id,
   });
 
   if (!txResult.success) {
-    return { success: false, message: `Swap failed: ${txResult.error}`, protocol: 'PancakeSwap' };
+    return err('PROTOCOL_UNAVAILABLE', `swap failed: ${txResult.error}`, trace_id, { retryable: true });
   }
-
-  return {
-    success: true,
-    message: `Swapped ${amount} ${fromToken} → ${toToken} via PancakeSwap`,
-    protocol: 'PancakeSwap',
-    txHash: txResult.txHash,
-  };
+  return ok(
+    { txHash: txResult.txHash, protocol: 'PancakeSwap', fromToken: input.fromToken, toToken: input.toToken, amount: input.amount },
+    trace_id,
+  );
 }
 
 // ─── Send Tokens ───
@@ -123,73 +237,99 @@ const TOKEN_ADDRESSES: Record<string, `0x${string}` | 'native'> = {
   USDT: ADDRESSES.USDT_TESTNET,
 };
 
-export async function sendTokens(
-  userId: string,
-  token: string,
-  amount: string,
-  toAddress: string,
-): Promise<{ success: boolean; message: string; txHash?: string; explorerUrl?: string }> {
-  logger.info('Engine: sendTokens(%s, %s %s → %s)', userId, amount, token, toAddress);
+export interface SendData { txHash: string; explorerUrl: string; token: string; amount: string; toAddress: string }
 
-  if (!isAddress(toAddress)) {
-    return { success: false, message: `Invalid recipient address: ${toAddress}` };
-  }
+export async function sendTokens(rawInput: unknown): Promise<EngineResult<SendData>> {
+  const trace_id = newTraceId();
+  const parsed = SendInputSchema.safeParse(rawInput);
+  if (!parsed.success) return err('VALIDATION_ERROR', firstZodIssue(parsed.error), trace_id);
+  const input = parsed.data;
+  logger.info(
+    { trace_id, tool: 'send_tokens', user_id: input.userId, token: input.token, amount: input.amount, toAddress: input.toAddress },
+    'engine.sendTokens',
+  );
 
-  const tokenUpper = token.toUpperCase();
+  const tokenUpper = input.token.toUpperCase();
   const tokenAddress = TOKEN_ADDRESSES[tokenUpper];
   if (!tokenAddress) {
-    return { success: false, message: `Unsupported token: ${token}. Supported: ${Object.keys(TOKEN_ADDRESSES).join(', ')}` };
+    return err(
+      'VALIDATION_ERROR',
+      `Unsupported token: ${input.token}. Supported: ${Object.keys(TOKEN_ADDRESSES).join(', ')}`,
+      trace_id,
+    );
   }
 
-  const wallet = walletManager.getClient(userId);
-  if (!wallet) {
-    return { success: false, message: 'Wallet not activated. Call wallet_setup first.' };
+  const cached = checkTrade(input.client_op_id);
+  if (cached.hit) {
+    return err('IDEMPOTENCY_REPLAY', 'duplicate request — returning original result', trace_id, {
+      details: { tx_hash: cached.original.tx_hash, original_executed_at: cached.original.executed_at },
+    });
   }
+
+  // send_tokens always confirms — funds leaving the system is the highest-risk
+  // primitive. Phase 6 layers on a per-user address allowlist.
+  if (!input.confirmation_token) {
+    const preview = {
+      action: 'send',
+      token: tokenUpper,
+      amount: input.amount,
+      to: input.toAddress,
+      estimated_usd: estimateUsd(tokenUpper, input.amount),
+    };
+    const cfm = createConfirmation({ userId: input.userId, action: 'send_tokens', args: input, preview });
+    return needsConfirmation({ action: 'send_tokens', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
+  }
+  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'send_tokens' });
+  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+  const drift = diffArgs(consumed, input as any, ['token', 'amount', 'toAddress']);
+  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+
+  let wallet;
+  try { wallet = walletManager.getClient(input.userId); }
+  catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
 
   try {
     let txHash: string;
-
     if (tokenAddress === 'native') {
-      // Native BNB transfer — no data needed
       txHash = await wallet.client.sendTransaction({
-        to: toAddress as `0x${string}`,
-        value: parseEther(amount),
+        to: input.toAddress as `0x${string}`,
+        value: parseEther(input.amount),
       });
     } else {
-      // ERC-20 transfer
       const data = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: 'transfer',
-        args: [toAddress as `0x${string}`, parseEther(amount)],
+        args: [input.toAddress as `0x${string}`, parseEther(input.amount)],
       });
-      txHash = await wallet.client.sendTransaction({
-        to: tokenAddress,
-        data,
-      });
+      txHash = await wallet.client.sendTransaction({ to: tokenAddress, data });
     }
-
     await wallet.publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
 
     tradeLogger.logTrade({
-      user_id: userId,
+      user_id: input.userId,
       type: 'transfer',
       protocol: 'direct',
       from_token: tokenUpper,
       to_token: tokenUpper,
-      from_amount: amount,
-      to_amount: amount,
+      from_amount: input.amount,
+      to_amount: input.amount,
       price_usd: 0,
       tx_hash: txHash,
+      client_op_id: input.client_op_id,
     });
 
-    return {
-      success: true,
-      message: `Sent ${amount} ${tokenUpper} to ${toAddress}`,
-      txHash,
-      explorerUrl: `https://testnet.bscscan.com/tx/${txHash}`,
-    };
+    return ok(
+      {
+        txHash,
+        explorerUrl: `https://testnet.bscscan.com/tx/${txHash}`,
+        token: tokenUpper,
+        amount: input.amount,
+        toAddress: input.toAddress,
+      },
+      trace_id,
+    );
   } catch (e: any) {
-    return { success: false, message: `Transfer failed: ${e.message}` };
+    return err('PROTOCOL_UNAVAILABLE', `transfer failed: ${e.message}`, trace_id, { retryable: true });
   }
 }
 
@@ -207,23 +347,65 @@ export async function arbExecute(
 
 // ─── Delta-Neutral ───
 
-export async function deltaNeutralOpen(
-  userId: string,
-  token: string,
-  notionalUsd: string,
-  maxFundingRate?: number,
-): Promise<StrategyResult> {
-  logger.info('Engine: deltaNeutralOpen(%s, %s, $%s)', userId, token, notionalUsd);
+export interface DeltaOpenData {
+  positionId?: string;
+  txHash?: string;
+  message: string;
+  data?: Record<string, any>;
+}
 
-  const riskCheck = riskManager.check(userId, {
-    type: 'delta_neutral',
-    amountUsd: parseFloat(notionalUsd),
-  });
-  if (!riskCheck.allowed) {
-    return { success: false, message: `Risk check failed: ${riskCheck.reason}` };
+export async function deltaNeutralOpen(rawInput: unknown): Promise<EngineResult<DeltaOpenData>> {
+  const trace_id = newTraceId();
+  const parsed = DeltaOpenInputSchema.safeParse(rawInput);
+  if (!parsed.success) return err('VALIDATION_ERROR', firstZodIssue(parsed.error), trace_id);
+  const input = parsed.data;
+  logger.info(
+    { trace_id, tool: 'delta_neutral_open', user_id: input.userId, token: input.token, notionalUsd: input.notionalUsd },
+    'engine.deltaNeutralOpen',
+  );
+
+  const cached = checkTrade(input.client_op_id);
+  if (cached.hit) {
+    return err('IDEMPOTENCY_REPLAY', 'duplicate request — returning original result', trace_id, {
+      details: { tx_hash: cached.original.tx_hash, original_executed_at: cached.original.executed_at },
+    });
   }
 
-  return deltaNeutral.open(userId, token, notionalUsd, maxFundingRate);
+  // Risk check up front so a bad position size never surfaces a confirmation prompt.
+  const riskCheck = riskManager.check(input.userId, {
+    type: 'delta_neutral',
+    amountUsd: parseFloat(input.notionalUsd),
+  });
+  if (!riskCheck.allowed) {
+    return err('PERMISSION_DENIED', `Risk check failed: ${riskCheck.reason}`, trace_id);
+  }
+
+  if (!input.confirmation_token) {
+    const preview = {
+      action: 'delta_neutral_open',
+      token: input.token,
+      notional_usd: input.notionalUsd,
+      max_funding_rate: input.maxFundingRate ?? 'no cap',
+      note: 'spot leg is real on-chain; short leg is virtual on testnet',
+    };
+    const cfm = createConfirmation({ userId: input.userId, action: 'delta_neutral_open', args: input, preview });
+    return needsConfirmation({ action: 'delta_neutral_open', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
+  }
+  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'delta_neutral_open' });
+  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+  const drift = diffArgs(consumed, input as any, ['token', 'notionalUsd']);
+  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+
+  try {
+    const result = await deltaNeutral.open(input.userId, input.token, input.notionalUsd, input.maxFundingRate);
+    if (!result.success) return err('PROTOCOL_UNAVAILABLE', result.message, trace_id, { retryable: true });
+    return ok(
+      { positionId: result.positionId, txHash: result.txHash, message: result.message, data: result.data },
+      trace_id,
+    );
+  } catch (e: any) {
+    return err('INTERNAL_ERROR', e?.message || 'delta-neutral open failed', trace_id);
+  }
 }
 
 export async function deltaNeutralClose(
