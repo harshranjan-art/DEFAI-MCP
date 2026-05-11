@@ -1,6 +1,11 @@
 import { logger } from '../../utils/logger';
-import { API_URLS, ADDRESSES } from '../../utils/constants';
+import { API_URLS } from '../../utils/constants';
 import { scannerCache } from './cache';
+import { CircuitBreaker, CircuitOpenError } from '../circuit';
+import { withRetry } from '../retry';
+
+const coingeckoBreaker = new CircuitBreaker('coingecko');
+const dexscreenerBreaker = new CircuitBreaker('dexscreener');
 
 export interface PriceQuote {
   dex: string;
@@ -41,11 +46,15 @@ export async function getTokenPrices(tokens: string[] = ['binancecoin', 'tether'
   const results: TokenPrice[] = [];
   try {
     const ids = tokens.join(',');
-    const res = await fetch(
-      `${API_URLS.COINGECKO_PRICE}?ids=${ids}&vs_currencies=usd`,
-      { signal: AbortSignal.timeout(8000) }
+    const json = await coingeckoBreaker.exec(() =>
+      withRetry(async () => {
+        const res = await fetch(`${API_URLS.COINGECKO_PRICE}?ids=${ids}&vs_currencies=usd`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) throw new Error(`coingecko ${res.status}`);
+        return (await res.json()) as Record<string, { usd: number }>;
+      }, { attempts: 2 }),
     );
-    const json = await res.json() as Record<string, { usd: number }>;
 
     const nameMap: Record<string, string> = {
       binancecoin: 'BNB',
@@ -63,8 +72,12 @@ export async function getTokenPrices(tokens: string[] = ['binancecoin', 'tether'
       }
     }
   } catch (e: any) {
-    logger.warn('CoinGecko price fetch failed: %s', e.message);
-    // Fallback prices
+    if (e instanceof CircuitOpenError) {
+      logger.warn({ breaker: 'coingecko' }, 'CoinGecko circuit open, returning fallback prices');
+    } else {
+      logger.warn('CoinGecko price fetch failed: %s', e.message);
+    }
+    // Fallback prices — same shape, flagged via source field
     results.push(
       { token: 'BNB', priceUsd: 600, source: 'fallback' },
       { token: 'USDT', priceUsd: 1, source: 'fallback' },
@@ -97,11 +110,15 @@ export async function getAllQuotes(token: string = 'BNB', quote: string = 'USDT'
 
   if (tokenAddr) {
     try {
-      const res = await fetch(
-        `${API_URLS.DEXSCREENER}/${tokenAddr}`,
-        { signal: AbortSignal.timeout(10000) }
+      const json = await dexscreenerBreaker.exec(() =>
+        withRetry(async () => {
+          const res = await fetch(`${API_URLS.DEXSCREENER}/${tokenAddr}`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!res.ok) throw new Error(`dexscreener ${res.status}`);
+          return (await res.json()) as any;
+        }, { attempts: 2 }),
       );
-      const json = await res.json() as any;
       const pairs: any[] = json.pairs || [];
 
       // Filter for BSC pairs with the target quote token
@@ -128,7 +145,11 @@ export async function getAllQuotes(token: string = 'BNB', quote: string = 'USDT'
         }
       }
     } catch (e: any) {
-      logger.warn('DexScreener fetch failed for %s: %s', token, e.message);
+      if (e instanceof CircuitOpenError) {
+        logger.warn({ breaker: 'dexscreener', token }, 'DexScreener circuit open');
+      } else {
+        logger.warn('DexScreener fetch failed for %s: %s', token, e.message);
+      }
     }
   }
 
