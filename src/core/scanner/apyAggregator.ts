@@ -3,6 +3,7 @@ import { API_URLS } from '../../utils/constants';
 import { scannerCache } from './cache';
 import { CircuitBreaker, CircuitOpenError } from '../circuit';
 import { withRetry } from '../retry';
+import { sanitizeString } from '../sanitize';
 
 const venusBreaker = new CircuitBreaker('venus_api');
 const beefyBreaker = new CircuitBreaker('beefy_api');
@@ -43,14 +44,23 @@ async function fetchVenus(): Promise<YieldOpportunity[]> {
     for (const m of markets) {
       const apy = parseFloat(m.supplyApy || '0');
       if (apy > 0 && m.underlyingSymbol) {
+        // Layer 1: Venus API symbol + contract address flow into LLM context.
+        const symbol = sanitizeString(m.underlyingSymbol, { source: 'venus', field: 'token', maxLength: 16 });
+        const contractAddress = sanitizeString(m.address || '', { source: 'venus', field: 'contractAddress', maxLength: 42 });
+        if (symbol.flagged || contractAddress.flagged) {
+          logger.warn(
+            { source: 'venus', flagged: [...(symbol.flagged ? ['token'] : []), ...(contractAddress.flagged ? ['contractAddress'] : [])] },
+            'sanitizer flagged scanner field',
+          );
+        }
         results.push({
           protocol: 'Venus',
-          pool: `${m.underlyingSymbol} Supply`,
-          token: m.underlyingSymbol,
+          pool: `${symbol.value} Supply`,
+          token: symbol.value,
           apy,
           tvl: parseFloat(m.totalSupplyUsd || '0'),
           risk: 'low',
-          contractAddress: m.address,
+          contractAddress: contractAddress.value || undefined,
           action: 'supply',
           source: 'venus-api',
           isSimulated: false, // Real testnet execution available
@@ -97,14 +107,22 @@ async function fetchBeefy(): Promise<YieldOpportunity[]> {
     for (const v of bscVaults.slice(0, 30)) {
       const apy = apys[v.id];
       if (typeof apy === 'number' && apy > 0) {
+        // Layer 1: Beefy returns user-facing strings that flow into LLM context.
+        const pool = sanitizeString(v.name || v.id, { source: 'beefy', field: 'pool', maxLength: 64 });
+        const token = sanitizeString(v.token || v.oracleId || 'UNKNOWN', { source: 'beefy', field: 'token', maxLength: 32 });
+        const contractAddress = sanitizeString(v.earnContractAddress || '', { source: 'beefy', field: 'contractAddress', maxLength: 42 });
+        const anyFlagged = pool.flagged || token.flagged || contractAddress.flagged;
+        if (anyFlagged) {
+          logger.warn({ source: 'beefy', flagged: [pool.flagged && 'pool', token.flagged && 'token', contractAddress.flagged && 'contractAddress'].filter(Boolean) }, 'sanitizer flagged scanner field');
+        }
         results.push({
           protocol: 'Beefy',
-          pool: v.name || v.id,
-          token: v.token || v.oracleId || 'UNKNOWN',
+          pool: pool.value,
+          token: token.value,
           apy: apy * 100,
           tvl: v.tvl || 0,
           risk: apy * 100 > 50 ? 'high' : apy * 100 > 15 ? 'medium' : 'low',
-          contractAddress: v.earnContractAddress,
+          contractAddress: contractAddress.value || undefined,
           action: 'vault',
           source: 'beefy-api',
           isSimulated: true, // Mainnet data only, no testnet contracts
@@ -134,10 +152,21 @@ async function fetchDefiLlama(): Promise<YieldOpportunity[]> {
       .sort((a: any, b: any) => b.apy - a.apy);
 
     for (const p of bsc.slice(0, 30)) {
+      // Layer 1: DefiLlama strings are 100% community-curated → highest injection risk.
+      const protocol = sanitizeString(p.project || 'Unknown', { source: 'defillama', field: 'protocol', maxLength: 48 });
+      const pool = sanitizeString(p.pool || p.symbol || 'Unknown', { source: 'defillama', field: 'pool', maxLength: 64 });
+      const token = sanitizeString(p.symbol || 'UNKNOWN', { source: 'defillama', field: 'token', maxLength: 32 });
+      const anyFlagged = protocol.flagged || pool.flagged || token.flagged;
+      if (anyFlagged) {
+        logger.warn(
+          { source: 'defillama', flagged: [protocol.flagged && 'protocol', pool.flagged && 'pool', token.flagged && 'token'].filter(Boolean) },
+          'sanitizer flagged scanner field',
+        );
+      }
       results.push({
-        protocol: p.project || 'Unknown',
-        pool: p.pool || p.symbol || 'Unknown',
-        token: p.symbol || 'UNKNOWN',
+        protocol: protocol.value,
+        pool: pool.value,
+        token: token.value,
         apy: p.apy,
         tvl: p.tvlUsd || 0,
         risk: p.apy > 50 ? 'high' : p.apy > 15 ? 'medium' : 'low',
