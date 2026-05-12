@@ -30,6 +30,8 @@ import { YieldDepositInputSchema } from './schemas/yield';
 import { DeltaOpenInputSchema } from './schemas/delta';
 import { checkTrade } from './idempotency';
 import { createConfirmation, consumeConfirmation, diffArgs } from './confirmations';
+// Phase 6 part 1 — per-user serialization lock
+import { acquireUserLock, releaseUserLock } from './locks';
 
 // ─── Phase 1 helpers ───
 
@@ -50,6 +52,32 @@ const TOKEN_USD: Record<string, number> = {
 function estimateUsd(token: string, amount: string): number {
   const px = TOKEN_USD[token.toUpperCase()] ?? 0;
   return parseFloat(amount) * px;
+}
+
+/**
+ * Run `fn` while holding the per-user execution lock. Returns the lock-
+ * contention envelope if the lock is currently held; otherwise releases
+ * it on either success or thrown error (try/finally).
+ */
+async function withLock<T>(
+  userId: string,
+  trace_id: string,
+  fn: () => Promise<EngineResult<T>>,
+): Promise<EngineResult<T>> {
+  const acq = acquireUserLock(userId, trace_id);
+  if (!acq.acquired) {
+    return err(
+      'PROTOCOL_UNAVAILABLE',
+      `Another action is in progress for this user (lock held by ${acq.held_by ?? 'unknown'} until ${acq.expires_at ?? 'unknown'}). Retry shortly.`,
+      trace_id,
+      { retryable: true, details: { held_by: acq.held_by, expires_at: acq.expires_at } },
+    );
+  }
+  try {
+    return await fn();
+  } finally {
+    releaseUserLock(userId, trace_id);
+  }
 }
 
 // ─── Market Scanning ───
@@ -99,31 +127,42 @@ export async function yieldDeposit(rawInput: unknown): Promise<EngineResult<Yiel
     const cfm = createConfirmation({ userId: input.userId, action: 'yield_deposit', args: input, preview });
     return needsConfirmation({ action: 'yield_deposit', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
   }
-  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'yield_deposit' });
-  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
-  const drift = diffArgs(consumed, input as any, ['token', 'amount', 'protocol']);
-  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+  return withLock(input.userId, trace_id, async () => {
+    const consumed = consumeConfirmation({ token: input.confirmation_token!, userId: input.userId, action: 'yield_deposit' });
+    if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+    const drift = diffArgs(consumed, input as any, ['token', 'amount', 'protocol']);
+    if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
 
-  try {
-    const result = await yieldOptimizer.deposit(input.userId, input.token, input.amount, input.protocol);
-    if (!result.success) {
-      return err('PROTOCOL_UNAVAILABLE', result.message || 'yield deposit failed', trace_id, { retryable: true });
+    // Risk check (vol-adjusted sizing fires for type='deposit')
+    const riskCheck = riskManager.check(input.userId, {
+      type: 'deposit',
+      amountUsd: estimateUsd(input.token, input.amount),
+      token: input.token,
+      protocol: input.protocol,
+    });
+    if (!riskCheck.allowed) return err('PERMISSION_DENIED', `Risk check failed: ${riskCheck.reason}`, trace_id);
+
+    try {
+      const result = await yieldOptimizer.deposit(input.userId, input.token, input.amount, input.protocol);
+      if (!result.success) {
+        return err('PROTOCOL_UNAVAILABLE', result.message || 'yield deposit failed', trace_id, { retryable: true });
+      }
+      return ok(
+        {
+          protocol: result.protocol,
+          apy: result.apy,
+          amount: result.amount,
+          token: result.token,
+          alternatives: result.alternatives,
+          positionId: result.positionId,
+          txHash: result.txHash,
+        },
+        trace_id,
+      );
+    } catch (e: any) {
+      return err('INTERNAL_ERROR', e?.message || 'yield deposit failed', trace_id);
     }
-    return ok(
-      {
-        protocol: result.protocol,
-        apy: result.apy,
-        amount: result.amount,
-        token: result.token,
-        alternatives: result.alternatives,
-        positionId: result.positionId,
-        txHash: result.txHash,
-      },
-      trace_id,
-    );
-  } catch (e: any) {
-    return err('INTERNAL_ERROR', e?.message || 'yield deposit failed', trace_id);
-  }
+  });
 }
 
 export async function yieldRotate(
@@ -189,44 +228,55 @@ export async function swapTokens(rawInput: unknown): Promise<EngineResult<SwapDa
     const cfm = createConfirmation({ userId: input.userId, action: 'swap_tokens', args: input, preview });
     return needsConfirmation({ action: 'swap_tokens', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
   }
-  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'swap_tokens' });
-  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
-  const drift = diffArgs(consumed, input as any, ['fromToken', 'toToken', 'amount']);
-  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+  return withLock(input.userId, trace_id, async () => {
+    const consumed = consumeConfirmation({ token: input.confirmation_token!, userId: input.userId, action: 'swap_tokens' });
+    if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+    const drift = diffArgs(consumed, input as any, ['fromToken', 'toToken', 'amount']);
+    if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
 
-  let wallet;
-  try { wallet = walletManager.getClient(input.userId); }
-  catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
+    // Risk check (post-confirmation, post-lock — uses current portfolio state)
+    const riskCheck = riskManager.check(input.userId, {
+      type: 'swap',
+      amountUsd: estimateUsd(input.fromToken, input.amount),
+      token: input.fromToken,
+      slippageBps: 500,
+    });
+    if (!riskCheck.allowed) return err('PERMISSION_DENIED', `Risk check failed: ${riskCheck.reason}`, trace_id);
 
-  const txResult = await pancakeSwapAdapter.swap!(
-    input.fromToken,
-    input.toToken,
-    input.amount,
-    wallet.client,
-    wallet.publicClient,
-  );
+    let wallet;
+    try { wallet = walletManager.getClient(input.userId); }
+    catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
 
-  // Log the trade carrying client_op_id so retries hit the idempotency check above.
-  tradeLogger.logTrade({
-    user_id: input.userId,
-    type: 'swap',
-    protocol: 'PancakeSwap',
-    from_token: input.fromToken,
-    to_token: input.toToken,
-    from_amount: input.amount,
-    to_amount: '',
-    price_usd: 0,
-    tx_hash: txResult.txHash || `0xfailed_${Date.now()}`,
-    client_op_id: input.client_op_id,
+    const txResult = await pancakeSwapAdapter.swap!(
+      input.fromToken,
+      input.toToken,
+      input.amount,
+      wallet.client,
+      wallet.publicClient,
+    );
+
+    // Log the trade carrying client_op_id so retries hit the idempotency check above.
+    tradeLogger.logTrade({
+      user_id: input.userId,
+      type: 'swap',
+      protocol: 'PancakeSwap',
+      from_token: input.fromToken,
+      to_token: input.toToken,
+      from_amount: input.amount,
+      to_amount: '',
+      price_usd: 0,
+      tx_hash: txResult.txHash || `0xfailed_${Date.now()}`,
+      client_op_id: input.client_op_id,
+    });
+
+    if (!txResult.success) {
+      return err('PROTOCOL_UNAVAILABLE', `swap failed: ${txResult.error}`, trace_id, { retryable: true });
+    }
+    return ok(
+      { txHash: txResult.txHash, protocol: 'PancakeSwap', fromToken: input.fromToken, toToken: input.toToken, amount: input.amount },
+      trace_id,
+    );
   });
-
-  if (!txResult.success) {
-    return err('PROTOCOL_UNAVAILABLE', `swap failed: ${txResult.error}`, trace_id, { retryable: true });
-  }
-  return ok(
-    { txHash: txResult.txHash, protocol: 'PancakeSwap', fromToken: input.fromToken, toToken: input.toToken, amount: input.amount },
-    trace_id,
-  );
 }
 
 // ─── Send Tokens ───
@@ -266,8 +316,18 @@ export async function sendTokens(rawInput: unknown): Promise<EngineResult<SendDa
     });
   }
 
+  // Risk check FIRST — default-deny address allowlist (Phase 6) rejects
+  // unknown recipients before we generate a confirmation preview.
+  const riskCheck = riskManager.check(input.userId, {
+    type: 'send',
+    amountUsd: estimateUsd(tokenUpper, input.amount),
+    token: tokenUpper,
+    toAddress: input.toAddress,
+  });
+  if (!riskCheck.allowed) return err('PERMISSION_DENIED', `Risk check failed: ${riskCheck.reason}`, trace_id);
+
   // send_tokens always confirms — funds leaving the system is the highest-risk
-  // primitive. Phase 6 layers on a per-user address allowlist.
+  // primitive.
   if (!input.confirmation_token) {
     const preview = {
       action: 'send',
@@ -279,58 +339,60 @@ export async function sendTokens(rawInput: unknown): Promise<EngineResult<SendDa
     const cfm = createConfirmation({ userId: input.userId, action: 'send_tokens', args: input, preview });
     return needsConfirmation({ action: 'send_tokens', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
   }
-  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'send_tokens' });
-  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
-  const drift = diffArgs(consumed, input as any, ['token', 'amount', 'toAddress']);
-  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+  return withLock(input.userId, trace_id, async () => {
+    const consumed = consumeConfirmation({ token: input.confirmation_token!, userId: input.userId, action: 'send_tokens' });
+    if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+    const drift = diffArgs(consumed, input as any, ['token', 'amount', 'toAddress']);
+    if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
 
-  let wallet;
-  try { wallet = walletManager.getClient(input.userId); }
-  catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
+    let wallet;
+    try { wallet = walletManager.getClient(input.userId); }
+    catch (e: any) { return err('WALLET_INACTIVE', e?.message || 'wallet not activated', trace_id); }
 
-  try {
-    let txHash: string;
-    if (tokenAddress === 'native') {
-      txHash = await wallet.client.sendTransaction({
-        to: input.toAddress as `0x${string}`,
-        value: parseEther(input.amount),
+    try {
+      let txHash: string;
+      if (tokenAddress === 'native') {
+        txHash = await wallet.client.sendTransaction({
+          to: input.toAddress as `0x${string}`,
+          value: parseEther(input.amount),
+        });
+      } else {
+        const data = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [input.toAddress as `0x${string}`, parseEther(input.amount)],
+        });
+        txHash = await wallet.client.sendTransaction({ to: tokenAddress, data });
+      }
+      await wallet.publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+
+      tradeLogger.logTrade({
+        user_id: input.userId,
+        type: 'transfer',
+        protocol: 'direct',
+        from_token: tokenUpper,
+        to_token: tokenUpper,
+        from_amount: input.amount,
+        to_amount: input.amount,
+        price_usd: 0,
+        tx_hash: txHash,
+        client_op_id: input.client_op_id,
       });
-    } else {
-      const data = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: 'transfer',
-        args: [input.toAddress as `0x${string}`, parseEther(input.amount)],
-      });
-      txHash = await wallet.client.sendTransaction({ to: tokenAddress, data });
+
+      return ok(
+        {
+          txHash,
+          explorerUrl: `https://testnet.bscscan.com/tx/${txHash}`,
+          token: tokenUpper,
+          amount: input.amount,
+          toAddress: input.toAddress,
+        },
+        trace_id,
+      );
+    } catch (e: any) {
+      return err('PROTOCOL_UNAVAILABLE', `transfer failed: ${e.message}`, trace_id, { retryable: true });
     }
-    await wallet.publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
-
-    tradeLogger.logTrade({
-      user_id: input.userId,
-      type: 'transfer',
-      protocol: 'direct',
-      from_token: tokenUpper,
-      to_token: tokenUpper,
-      from_amount: input.amount,
-      to_amount: input.amount,
-      price_usd: 0,
-      tx_hash: txHash,
-      client_op_id: input.client_op_id,
-    });
-
-    return ok(
-      {
-        txHash,
-        explorerUrl: `https://testnet.bscscan.com/tx/${txHash}`,
-        token: tokenUpper,
-        amount: input.amount,
-        toAddress: input.toAddress,
-      },
-      trace_id,
-    );
-  } catch (e: any) {
-    return err('PROTOCOL_UNAVAILABLE', `transfer failed: ${e.message}`, trace_id, { retryable: true });
-  }
+  });
 }
 
 // ─── Arbitrage ───
@@ -372,9 +434,11 @@ export async function deltaNeutralOpen(rawInput: unknown): Promise<EngineResult<
   }
 
   // Risk check up front so a bad position size never surfaces a confirmation prompt.
+  // Phase 6 part 1: passes `token` so vol-adjusted sizing fires.
   const riskCheck = riskManager.check(input.userId, {
     type: 'delta_neutral',
     amountUsd: parseFloat(input.notionalUsd),
+    token: input.token,
   });
   if (!riskCheck.allowed) {
     return err('PERMISSION_DENIED', `Risk check failed: ${riskCheck.reason}`, trace_id);
@@ -391,21 +455,23 @@ export async function deltaNeutralOpen(rawInput: unknown): Promise<EngineResult<
     const cfm = createConfirmation({ userId: input.userId, action: 'delta_neutral_open', args: input, preview });
     return needsConfirmation({ action: 'delta_neutral_open', preview, confirmation_token: cfm.token, expires_at: cfm.expires_at }, trace_id);
   }
-  const consumed = consumeConfirmation({ token: input.confirmation_token, userId: input.userId, action: 'delta_neutral_open' });
-  if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
-  const drift = diffArgs(consumed, input as any, ['token', 'notionalUsd']);
-  if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
+  return withLock(input.userId, trace_id, async () => {
+    const consumed = consumeConfirmation({ token: input.confirmation_token!, userId: input.userId, action: 'delta_neutral_open' });
+    if (!consumed) return err('VALIDATION_ERROR', 'confirmation_token invalid, expired, or already consumed', trace_id);
+    const drift = diffArgs(consumed, input as any, ['token', 'notionalUsd']);
+    if (drift.length > 0) return err('VALIDATION_ERROR', `arguments do not match confirmation (drift: ${drift.join(', ')})`, trace_id);
 
-  try {
-    const result = await deltaNeutral.open(input.userId, input.token, input.notionalUsd, input.maxFundingRate);
-    if (!result.success) return err('PROTOCOL_UNAVAILABLE', result.message, trace_id, { retryable: true });
-    return ok(
-      { positionId: result.positionId, txHash: result.txHash, message: result.message, data: result.data },
-      trace_id,
-    );
-  } catch (e: any) {
-    return err('INTERNAL_ERROR', e?.message || 'delta-neutral open failed', trace_id);
-  }
+    try {
+      const result = await deltaNeutral.open(input.userId, input.token, input.notionalUsd, input.maxFundingRate);
+      if (!result.success) return err('PROTOCOL_UNAVAILABLE', result.message, trace_id, { retryable: true });
+      return ok(
+        { positionId: result.positionId, txHash: result.txHash, message: result.message, data: result.data },
+        trace_id,
+      );
+    } catch (e: any) {
+      return err('INTERNAL_ERROR', e?.message || 'delta-neutral open failed', trace_id);
+    }
+  });
 }
 
 export async function deltaNeutralClose(
