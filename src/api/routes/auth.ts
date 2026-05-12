@@ -2,16 +2,23 @@ import { Router } from 'express';
 import * as userResolver from '../../core/userResolver';
 import * as dbOps from '../../core/db';
 import { generateToken } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
 import { logger } from '../../utils/logger';
 
 const router = Router();
+
+// Phase 6.5 — slow brute-force / account-farming attempts.
+// Registers a fresh account is more constrained than logging in because
+// creating accounts has lasting state (encrypted private key in DB).
+const registerLimiter = rateLimit({ windowMs: 60 * 60_000, max: 3 });   // 3 per IP per hour
+const loginLimiter    = rateLimit({ windowMs: 15 * 60_000, max: 5 });   // 5 per IP per 15 min
 
 /**
  * POST /api/auth/register
  * Body: { private_key }
  * Returns: { userId, apiKey, smartAccountAddress, jwt }
  */
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const { private_key } = req.body;
     if (!private_key) {
@@ -43,7 +50,7 @@ router.post('/register', async (req, res) => {
  * Body: { api_key }
  * Returns: { jwt, userId, smartAccountAddress }
  */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { api_key } = req.body;
     if (!api_key) {
