@@ -1,0 +1,14 @@
+{
+  "name": "trade_history_basic",
+  "difficulty": "easy",
+  "user_input": "show my recent trades",
+  "user_id": "eval-user-trades",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "get_trade_history", "args_match": {}, "args_extra_allowed": ["limit", "trade_type"] }
+    ],
+    "must_not_call": ["swap_tokens", "send_tokens", "yield_deposit"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": []
+}

@@ -1,0 +1,14 @@
+{
+  "name": "list_alerts",
+  "difficulty": "easy",
+  "user_input": "show my alert configuration",
+  "user_id": "eval-user-alerts",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "get_alerts", "args_match": {}, "args_extra_allowed": [] }
+    ],
+    "must_not_call": ["swap_tokens", "send_tokens", "set_alert"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": []
+}

@@ -18,3 +18,7 @@ defai-master-plan.md
 learn/
 prep/
 refactor-plan/
+
+# Eval run outputs (historical results; only keep latest in repo)
+evals/results/
+!evals/results/.gitkeep

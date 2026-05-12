@@ -1,0 +1,14 @@
+{
+  "name": "get_portfolio_basic",
+  "difficulty": "easy",
+  "user_input": "show me my portfolio",
+  "user_id": "eval-user-portfolio",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "get_portfolio", "args_match": {}, "args_extra_allowed": [] }
+    ],
+    "must_not_call": ["swap_tokens", "send_tokens", "yield_deposit", "delta_neutral_open"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["portfolio"]
+}
