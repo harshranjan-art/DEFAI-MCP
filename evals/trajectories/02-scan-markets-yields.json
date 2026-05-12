@@ -1,0 +1,14 @@
+{
+  "name": "scan_markets_yields",
+  "difficulty": "easy",
+  "user_input": "what are the best yield opportunities right now?",
+  "user_id": "eval-user-scan-yield",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "scan_markets", "args_match": { "category": ["yield", "all"] }, "args_extra_allowed": [] }
+    ],
+    "must_not_call": ["swap_tokens", "send_tokens", "yield_deposit"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["apy"]
+}

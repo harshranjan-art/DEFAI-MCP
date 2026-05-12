@@ -288,6 +288,39 @@ function addToHistory(userId: string, role: 'user' | 'assistant', content: strin
 type ToolArgs = Record<string, any>;
 
 /**
+ * Eval-suite hook: optional listener that captures every tool dispatch.
+ * Production runs leave this null (zero cost). The Phase 5 eval runner
+ * installs a capture function via setToolCallListener() before exercising
+ * the agent and reads the captured trajectory after route() returns.
+ *
+ * Listener is invoked AFTER the tool reply is computed so it can record
+ * the full (name, args, reply) tuple. Errors thrown from the listener are
+ * swallowed — never let observability break the user-facing path.
+ */
+export interface CapturedToolCall {
+  tool: string;
+  args: ToolArgs;
+  userId: string;
+  reply: string;
+  trace_id: string;
+}
+type ToolCallListener = (call: CapturedToolCall) => void;
+let toolCallListener: ToolCallListener | null = null;
+
+export function setToolCallListener(fn: ToolCallListener | null): void {
+  toolCallListener = fn;
+}
+
+function notifyListener(tool: string, args: ToolArgs, userId: string, reply: string, trace_id: string): void {
+  if (!toolCallListener) return;
+  try {
+    toolCallListener({ tool, args, userId, reply, trace_id });
+  } catch (e: any) {
+    logger.warn({ err: e?.message, tool }, 'toolCallListener threw; ignoring');
+  }
+}
+
+/**
  * Layer 3 gate: run the verifier sub-agent for write tools before reaching
  * the engine. The verifier sees only (proposed action, user message, brief
  * market context) — no conversation history, no tool definitions — which
@@ -542,10 +575,12 @@ export async function route(userId: string, message: string): Promise<string> {
     let reply: string;
     if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
       const toolCall = choice.message.tool_calls[0];
+      const parsedArgs = JSON.parse(toolCall.function.arguments) ?? {};
       const toolSpan = trace.child(`engine.${toolCall.function.name}`, { args: toolCall.function.arguments });
       try {
-        reply = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments) ?? {}, userId, message, trace_id);
+        reply = await executeTool(toolCall.function.name, parsedArgs, userId, message, trace_id);
         toolSpan.end({ reply_preview: reply.slice(0, 200) });
+        notifyListener(toolCall.function.name, parsedArgs, userId, reply, trace_id);
       } catch (e: any) {
         toolSpan.end({ err: e?.message }, { status: 'error', error: e?.message });
         throw e;

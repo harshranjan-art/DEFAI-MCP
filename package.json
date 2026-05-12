@@ -15,6 +15,9 @@
     "test:watch": "SCRYPT_N=16384 vitest",
     "test:coverage": "SCRYPT_N=16384 vitest run --coverage",
     "test:wallet": "ts-node scripts/testWallet.ts",
+    "eval": "ts-node evals/run-trajectories.ts",
+    "eval:trajectories": "ts-node evals/run-trajectories.ts",
+    "eval:no-judge": "ts-node evals/run-trajectories.ts -- --no-judge",
     "dashboard": "cd dashboard && npm run dev",
     "docker:up": "docker-compose up --build -d",
     "docker:down": "docker-compose down"

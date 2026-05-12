@@ -1,0 +1,14 @@
+{
+  "name": "scan_markets_prices",
+  "difficulty": "easy",
+  "user_input": "what's the current price of BNB?",
+  "user_id": "eval-user-scan-prices",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "scan_markets", "args_match": { "category": ["prices", "all"] }, "args_extra_allowed": [] }
+    ],
+    "must_not_call": ["swap_tokens", "send_tokens"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["bnb"]
+}
