@@ -65,6 +65,13 @@ Respond with JSON only. Schema:
     "reason": "<= 280 chars",
     "flags": ["amount_unreasonable" | "address_suspicious" | "risk_violation" | "argument_injection" | "context_injection" | "consistency_violation"] }`;
 
+export interface VerifierUsage {
+  model: string;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+}
+
 export interface VerifyOptions {
   toolName: string;
   args: Record<string, unknown>;
@@ -75,6 +82,12 @@ export interface VerifyOptions {
    * If not provided, a real Groq client is constructed from GROQ_API_KEY.
    */
   groqOverride?: Pick<Groq, 'chat'>;
+  /**
+   * Callback invoked with token usage after the call returns successfully.
+   * The agent router uses this to record cost under the same trace_id as
+   * the planner call. Fail-soft if it throws.
+   */
+  onUsage?: (u: VerifierUsage) => void;
 }
 
 /**
@@ -112,10 +125,11 @@ export async function verify(opts: VerifyOptions): Promise<VerifierVerdict> {
     `Market context: ${opts.marketContext}`,
   ].join('\n');
 
+  const VERIFIER_MODEL = 'llama-3.1-8b-instant';
   let raw: string;
   try {
     const completion = await client.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: VERIFIER_MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userContent },
@@ -125,6 +139,21 @@ export async function verify(opts: VerifyOptions): Promise<VerifierVerdict> {
       response_format: { type: 'json_object' },
     });
     raw = completion.choices?.[0]?.message?.content ?? '';
+    if (opts.onUsage) {
+      const usage = (completion as any).usage;
+      if (usage) {
+        try {
+          opts.onUsage({
+            model: VERIFIER_MODEL,
+            input_tokens: usage.prompt_tokens ?? 0,
+            cached_input_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+            output_tokens: usage.completion_tokens ?? 0,
+          });
+        } catch (cbErr: any) {
+          logger.warn({ err: cbErr?.message }, 'verifier onUsage callback threw; ignoring');
+        }
+      }
+    }
   } catch (e: any) {
     // Fail-open intentionally: if verifier is unreachable, the engine's other
     // layers (zod, idempotency, confirmation gate, risk manager) still apply.

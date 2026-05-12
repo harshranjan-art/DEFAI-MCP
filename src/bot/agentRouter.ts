@@ -18,6 +18,9 @@ import { executeSetAlert, executeGetAlerts } from '../mcp/tools/setAlerts';
 import { newClientOpId } from '../core/idempotency';
 import { verify, VERIFIER_GATED_TOOLS, type VerifierVerdict } from './verifier';
 import { buildMarketContext, formatMarketContext } from './marketContext';
+import { startTrace, newTraceId } from '../observability/tracer';
+import { recordCost, isBudgetExceeded } from '../observability/cost';
+import * as riskManager from '../core/riskManager';
 import { logger } from '../utils/logger';
 
 let groq: Groq | null = null;
@@ -298,6 +301,7 @@ async function maybeVerify(
   args: ToolArgs,
   userId: string,
   userMessage: string,
+  trace_id: string,
 ): Promise<{ ok: true } | { ok: false; reply: string; verdict: VerifierVerdict }> {
   if (process.env.DISABLE_VERIFIER === '1') return { ok: true };
   if (!VERIFIER_GATED_TOOLS.has(name)) return { ok: true };
@@ -309,8 +313,19 @@ async function maybeVerify(
       args,
       userMessage,
       marketContext: formatMarketContext(ctx),
+      onUsage: (u) => {
+        recordCost({
+          trace_id,
+          user_id: userId,
+          model: u.model,
+          task: 'verifier',
+          input_tokens: u.input_tokens,
+          input_cached_tokens: u.cached_input_tokens,
+          output_tokens: u.output_tokens,
+        });
+      },
     });
-    logger.info({ tool: name, approve: verdict.approve, confidence: verdict.confidence, flags: verdict.flags }, 'verifier verdict');
+    logger.info({ trace_id, tool: name, approve: verdict.approve, confidence: verdict.confidence, flags: verdict.flags }, 'verifier verdict');
     if (verdict.approve) return { ok: true };
     return {
       ok: false,
@@ -318,18 +333,15 @@ async function maybeVerify(
       reply: `Action rejected by safety verifier: ${verdict.reason} (flags: ${verdict.flags.join(', ') || 'none'}). Please rephrase or break the action into smaller steps.`,
     };
   } catch (e: any) {
-    // Defensive: verifier wrapper threw (e.g., no GROQ_API_KEY). Fall back to
-    // permit — the engine layers (zod, idempotency, confirmation, risk) still
-    // apply. Production should alert on this log line.
     logger.warn({ err: e?.message, tool: name }, 'verifier wrapper threw; falling back to permit');
     return { ok: true };
   }
 }
 
-async function executeTool(name: string, args: ToolArgs, userId: string, userMessage: string): Promise<string> {
-  logger.info('AgentRouter: executing tool %s args=%j', name, args);
+async function executeTool(name: string, args: ToolArgs, userId: string, userMessage: string, trace_id: string): Promise<string> {
+  logger.info({ trace_id, tool: name, args }, 'AgentRouter: executing tool');
 
-  const gate = await maybeVerify(name, args, userId, userMessage);
+  const gate = await maybeVerify(name, args, userId, userMessage, trace_id);
   if (!gate.ok) return gate.reply;
 
   switch (name) {
@@ -460,40 +472,94 @@ async function executeTool(name: string, args: ToolArgs, userId: string, userMes
   }
 }
 
+const PLANNER_MODEL = 'llama-3.3-70b-versatile';
+
 export async function route(userId: string, message: string): Promise<string> {
-  logger.info('AgentRouter: routing message from user %s: "%s"', userId, message);
+  const trace_id = newTraceId();
+  logger.info({ trace_id, user_id: userId, surface: 'bot', user_message_preview: message.slice(0, 80) }, 'agentRouter.route');
+
+  // Daily LLM-cost cap: bail out before any LLM spend if user is over budget.
+  // Cap defaults to $2/day; configurable via risk_config.dailyLlmCostCapUsd.
+  try {
+    const cap = riskManager.getConfig(userId).dailyLlmCostCapUsd;
+    const budget = isBudgetExceeded(userId, cap);
+    if (budget.exceeded) {
+      return `Daily LLM budget reached ($${budget.spent_usd.toFixed(3)} of $${budget.cap_usd.toFixed(2)}). Budget resets at midnight UTC. Raise dailyLlmCostCapUsd via risk_config to continue.`;
+    }
+  } catch (e: any) {
+    // budget check failure must not break the agent — log and continue.
+    logger.warn({ err: e?.message, user_id: userId }, 'budget pre-check failed; permitting');
+  }
 
   addToHistory(userId, 'user', message);
 
+  const trace = startTrace({ trace_id, user_id: userId, surface: 'bot', user_message: message });
+
   try {
     const history = histories.get(userId) || [];
+    const messages = [
+      { role: 'system' as const, content: SYSTEM_PROMPT },
+      ...history,
+    ];
 
+    const plannerSpan = trace.generation('planner.llm', { model: PLANNER_MODEL, input: messages });
     const response = await getGroq().chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...history,
-      ],
+      model: PLANNER_MODEL,
+      messages,
       tools: TOOLS,
       tool_choice: 'auto',
       max_tokens: 500,
       temperature: 0.1,
     });
 
+    // Record planner cost. Groq returns usage on the response.
+    const usage = (response as any).usage;
+    if (usage) {
+      const cost = recordCost({
+        trace_id,
+        user_id: userId,
+        model: PLANNER_MODEL,
+        task: 'planner',
+        input_tokens: usage.prompt_tokens ?? 0,
+        input_cached_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+        output_tokens: usage.completion_tokens ?? 0,
+      });
+      plannerSpan.endWithUsage({
+        output: response.choices[0]?.message,
+        usage: {
+          input_tokens: usage.prompt_tokens ?? 0,
+          output_tokens: usage.completion_tokens ?? 0,
+          cached_input_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+        },
+        cost_usd: cost,
+      });
+    } else {
+      plannerSpan.end(response.choices[0]?.message);
+    }
+
     const choice = response.choices[0];
 
     let reply: string;
     if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
       const toolCall = choice.message.tool_calls[0];
-      reply = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments) ?? {}, userId, message);
+      const toolSpan = trace.child(`engine.${toolCall.function.name}`, { args: toolCall.function.arguments });
+      try {
+        reply = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments) ?? {}, userId, message, trace_id);
+        toolSpan.end({ reply_preview: reply.slice(0, 200) });
+      } catch (e: any) {
+        toolSpan.end({ err: e?.message }, { status: 'error', error: e?.message });
+        throw e;
+      }
     } else {
       reply = choice.message.content?.trim() || "I'm not sure how to help with that. Try /help for available commands.";
     }
 
     addToHistory(userId, 'assistant', reply);
+    trace.end({ reply_preview: reply.slice(0, 200) });
     return reply;
   } catch (e: any) {
-    logger.error('AgentRouter: error: %s', e.message);
+    logger.error({ err: e?.message, trace_id }, 'AgentRouter: route error');
+    trace.end({ err: e?.message }, { status: 'error', error: e?.message });
     return 'Something went wrong. Please try again.';
   }
 }

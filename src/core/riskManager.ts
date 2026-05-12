@@ -12,6 +12,12 @@ export interface RiskConfig {
   maxSlippageBps: number;
   allowedProtocols: string[];  // empty = all allowed
   maxDeltaNeutralPositions: number;
+  /**
+   * Daily LLM-cost cap in USD. 0 = unlimited. When reached, the agent
+   * router rejects new turns with a budget-exceeded message until the
+   * UTC date rolls over.
+   */
+  dailyLlmCostCapUsd: number;
 }
 
 const DEFAULT_CONFIG: RiskConfig = {
@@ -20,6 +26,7 @@ const DEFAULT_CONFIG: RiskConfig = {
   maxSlippageBps: 100, // 1%
   allowedProtocols: [],
   maxDeltaNeutralPositions: 3,
+  dailyLlmCostCapUsd: 2.0,
 };
 
 export function getConfig(userId: string): RiskConfig {

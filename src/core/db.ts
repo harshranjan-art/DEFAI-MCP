@@ -6,6 +6,7 @@ import { MIGRATION_002_SQL, MIGRATION_002_VERSION } from './migrations/002_idemp
 import { MIGRATION_003_SQL, MIGRATION_003_VERSION } from './migrations/003_confirmations';
 import { MIGRATION_004_SQL, MIGRATION_004_VERSION } from './migrations/004_state_transitions';
 import { MIGRATION_005_SQL, MIGRATION_005_VERSION } from './migrations/005_arb_session_state';
+import { MIGRATION_008_SQL, MIGRATION_008_VERSION } from './migrations/008_llm_costs';
 
 // __dirname is dist/src/core/ when compiled, src/core/ when running via ts-node.
 // Compiled: 3 levels up to project root. ts-node: use process.cwd() (always project root).
@@ -143,6 +144,7 @@ runMigration(MIGRATION_002_VERSION, MIGRATION_002_SQL);
 runMigration(MIGRATION_003_VERSION, MIGRATION_003_SQL);
 runMigration(MIGRATION_004_VERSION, MIGRATION_004_SQL);
 runMigration(MIGRATION_005_VERSION, MIGRATION_005_SQL);
+runMigration(MIGRATION_008_VERSION, MIGRATION_008_SQL);
 
 // ─── User Helpers ───
 
