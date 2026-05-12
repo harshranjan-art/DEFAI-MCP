@@ -18,6 +18,8 @@ import { executeSetAlert, executeGetAlerts } from '../mcp/tools/setAlerts';
 import { newClientOpId } from '../core/idempotency';
 import { verify, VERIFIER_GATED_TOOLS, type VerifierVerdict } from './verifier';
 import { buildMarketContext, formatMarketContext } from './marketContext';
+import { summarizeMessages, type SummarizerMessage } from './summarizer';
+import { classifyIntent, pickPlannerModel, type IntentVerdict } from './intentClassifier';
 import { startTrace, newTraceId } from '../observability/tracer';
 import { recordCost, isBudgetExceeded } from '../observability/cost';
 import * as riskManager from '../core/riskManager';
@@ -273,16 +275,68 @@ const SYSTEM_PROMPT = [
   '4. If a verifier rejects a proposed action (you see PERMISSION_DENIED with reason "Verifier rejected"), do NOT silently retry with rewritten args. Tell the user what was rejected and why.',
 ].join('\n');
 
-// Per-user conversation history (in-memory, last 10 messages = 5 turns)
+// Per-user conversation history (in-memory). MAX_HISTORY caps the verbatim
+// tail; SUMMARIZE_THRESHOLD triggers compression of older turns via the
+// Phase 6.5 summarizer.
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 const histories = new Map<string, ChatMessage[]>();
-const MAX_HISTORY = 10;
+const MAX_HISTORY = 30;            // hard cap on retained verbatim turns
+const KEEP_VERBATIM = 6;           // last 3 turns stay raw
+const SUMMARIZE_THRESHOLD = 12;    // start summarizing older turns above this
+
+// Cached summary per user. Avoid re-summarizing on every turn: only refresh
+// when the unsummarized older slice has grown enough to matter.
+interface UserSummary {
+  text: string;
+  through_count: number; // index in the user's history that the summary covers up to (exclusive)
+}
+const summaries = new Map<string, UserSummary>();
 
 function addToHistory(userId: string, role: 'user' | 'assistant', content: string) {
   const history = histories.get(userId) || [];
   history.push({ role, content });
   if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
   histories.set(userId, history);
+}
+
+/**
+ * Build the message array passed to the planner: optional summary at the
+ * head (when history exceeds SUMMARIZE_THRESHOLD) + last KEEP_VERBATIM
+ * messages verbatim. Falls back to hard truncation if summarizer returns
+ * null (Groq error) — see summarizer.ts.
+ */
+async function buildPrunedHistory(
+  userId: string,
+  trace_id: string,
+): Promise<ChatMessage[]> {
+  const full = histories.get(userId) || [];
+  if (full.length <= SUMMARIZE_THRESHOLD) return full;
+
+  const olderCount = full.length - KEEP_VERBATIM;
+  const recent = full.slice(-KEEP_VERBATIM);
+  const older = full.slice(0, olderCount);
+
+  // Reuse cached summary if we already summarized this exact older slice.
+  const cached = summaries.get(userId);
+  let summary: string | null = cached?.through_count === olderCount ? cached.text : null;
+  if (summary === null) {
+    summary = await summarizeMessages(older as SummarizerMessage[], {
+      trace_id,
+      user_id: userId,
+    });
+    if (summary) {
+      summaries.set(userId, { text: summary, through_count: olderCount });
+    }
+  }
+
+  if (!summary) {
+    // Fail-soft: summarizer unavailable → hard-truncate to the recent tail.
+    return recent;
+  }
+  return [
+    { role: 'assistant', content: `[Summary of ${olderCount} earlier messages]\n${summary}` },
+    ...recent,
+  ];
 }
 
 type ToolArgs = Record<string, any>;
@@ -505,7 +559,7 @@ async function executeTool(name: string, args: ToolArgs, userId: string, userMes
   }
 }
 
-const PLANNER_MODEL = 'llama-3.3-70b-versatile';
+const PLANNER_MODEL_FLAGSHIP = 'llama-3.3-70b-versatile';
 
 export async function route(userId: string, message: string): Promise<string> {
   const trace_id = newTraceId();
@@ -524,20 +578,35 @@ export async function route(userId: string, message: string): Promise<string> {
     logger.warn({ err: e?.message, user_id: userId }, 'budget pre-check failed; permitting');
   }
 
+  // Phase 6.5 — classify intent BEFORE adding to history, so we route the
+  // planner without conversation context biasing the classifier. The 8B
+  // classifier is ~$0.0001/turn; net savings on read-only queries.
+  let intent: IntentVerdict;
+  try {
+    intent = await classifyIntent(message, { trace_id, user_id: userId });
+  } catch (e: any) {
+    logger.warn({ err: e?.message, trace_id }, 'intent classifier wrapper threw; using flagship planner');
+    intent = { intent: 'ambiguous', confidence: 0, reason: 'classifier threw' };
+  }
+  const plannerModel = process.env.DISABLE_INTENT_ROUTING === '1' ? PLANNER_MODEL_FLAGSHIP : pickPlannerModel(intent);
+  logger.info({ trace_id, intent: intent.intent, confidence: intent.confidence, plannerModel }, 'intent classified');
+
   addToHistory(userId, 'user', message);
 
   const trace = startTrace({ trace_id, user_id: userId, surface: 'bot', user_message: message });
 
   try {
-    const history = histories.get(userId) || [];
+    // Phase 6.5 — pruned history: summary head + last KEEP_VERBATIM turns
+    // when full history exceeds SUMMARIZE_THRESHOLD; raw history otherwise.
+    const history = await buildPrunedHistory(userId, trace_id);
     const messages = [
       { role: 'system' as const, content: SYSTEM_PROMPT },
       ...history,
     ];
 
-    const plannerSpan = trace.generation('planner.llm', { model: PLANNER_MODEL, input: messages });
+    const plannerSpan = trace.generation('planner.llm', { model: plannerModel, input: messages });
     const response = await getGroq().chat.completions.create({
-      model: PLANNER_MODEL,
+      model: plannerModel,
       messages,
       tools: TOOLS,
       tool_choice: 'auto',
@@ -551,7 +620,7 @@ export async function route(userId: string, message: string): Promise<string> {
       const cost = recordCost({
         trace_id,
         user_id: userId,
-        model: PLANNER_MODEL,
+        model: plannerModel,
         task: 'planner',
         input_tokens: usage.prompt_tokens ?? 0,
         input_cached_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
