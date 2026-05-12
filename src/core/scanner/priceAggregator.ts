@@ -3,6 +3,7 @@ import { API_URLS } from '../../utils/constants';
 import { scannerCache } from './cache';
 import { CircuitBreaker, CircuitOpenError } from '../circuit';
 import { withRetry } from '../retry';
+import { sanitizeString } from '../sanitize';
 
 const coingeckoBreaker = new CircuitBreaker('coingecko');
 const dexscreenerBreaker = new CircuitBreaker('dexscreener');
@@ -132,8 +133,18 @@ export async function getAllQuotes(token: string = 'BNB', quote: string = 'USDT'
       for (const p of bscPairs) {
         const price = parseFloat(p.priceNative || p.priceUsd || '0');
         if (price > 0) {
+          // Layer 1: dexId comes from DexScreener — untrusted input that flows
+          // into LLM context as part of the agent's market data. Sanitize.
+          const dex = sanitizeString(p.dexId || 'Unknown', {
+            source: 'dexscreener',
+            field: 'dex',
+            maxLength: 32,
+          });
+          if (dex.flagged) {
+            logger.warn({ source: 'dexscreener', field: 'dex', reasons: dex.reasons }, 'sanitizer flagged scanner field');
+          }
           results.push({
-            dex: p.dexId || 'Unknown',
+            dex: dex.value,
             fromToken: token,
             toToken: quote,
             amountIn: amount,
