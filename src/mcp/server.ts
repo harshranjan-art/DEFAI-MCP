@@ -441,7 +441,7 @@ server.tool(
   async (_args, extra) => {
     try {
       const userId = getUserId((extra as any)?.sessionId || 'default');
-      const result = executeArbAutoStop(userId);
+      const result = await executeArbAutoStop(userId);
       return { content: [{ type: 'text' as const, text: result }] };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }] };

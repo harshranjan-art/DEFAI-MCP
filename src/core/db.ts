@@ -4,6 +4,8 @@ import fs from 'fs';
 import { logger } from '../utils/logger';
 import { MIGRATION_002_SQL, MIGRATION_002_VERSION } from './migrations/002_idempotency';
 import { MIGRATION_003_SQL, MIGRATION_003_VERSION } from './migrations/003_confirmations';
+import { MIGRATION_004_SQL, MIGRATION_004_VERSION } from './migrations/004_state_transitions';
+import { MIGRATION_005_SQL, MIGRATION_005_VERSION } from './migrations/005_arb_session_state';
 
 // __dirname is dist/src/core/ when compiled, src/core/ when running via ts-node.
 // Compiled: 3 levels up to project root. ts-node: use process.cwd() (always project root).
@@ -139,6 +141,8 @@ function runMigration(version: number, sql: string): void {
 
 runMigration(MIGRATION_002_VERSION, MIGRATION_002_SQL);
 runMigration(MIGRATION_003_VERSION, MIGRATION_003_SQL);
+runMigration(MIGRATION_004_VERSION, MIGRATION_004_SQL);
+runMigration(MIGRATION_005_VERSION, MIGRATION_005_SQL);
 
 // ─── User Helpers ───
 
@@ -321,34 +325,47 @@ export function insertAutoArbSession(s: {
   id: string; user_id: string; expires_at: string;
   max_loss_usd: number; max_slippage_bps: number;
 }) {
-  // Stop any existing active session for this user first
-  db.prepare("UPDATE auto_arb_sessions SET status = 'stopped' WHERE user_id = ? AND status = 'active'").run(s.user_id);
+  // Stop any existing non-terminal session for this user first
+  db.prepare(
+    "UPDATE auto_arb_sessions SET status = 'stopped', current_state = 'STOPPED' WHERE user_id = ? AND current_state NOT IN ('STOPPED','FAILED')",
+  ).run(s.user_id);
   db.prepare(`
-    INSERT INTO auto_arb_sessions (id, user_id, expires_at, max_loss_usd, max_slippage_bps)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO auto_arb_sessions (id, user_id, expires_at, max_loss_usd, max_slippage_bps, current_state)
+    VALUES (?, ?, ?, ?, ?, 'SCANNING')
   `).run(s.id, s.user_id, s.expires_at, s.max_loss_usd, s.max_slippage_bps);
 }
 
+/**
+ * Active = any non-terminal FSM state (SCANNING / EXECUTING / COOLING / PAUSED).
+ * Legacy `status = 'active'` rows are covered by the migration backfill.
+ */
 export function getActiveAutoArbSessions(): any[] {
-  return db.prepare("SELECT * FROM auto_arb_sessions WHERE status = 'active'").all() as any[];
+  return db.prepare(
+    "SELECT * FROM auto_arb_sessions WHERE current_state NOT IN ('STOPPED','FAILED')",
+  ).all() as any[];
 }
 
 export function getAutoArbSession(userId: string): any | undefined {
-  return db.prepare("SELECT * FROM auto_arb_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT 1").get(userId) as any;
+  return db.prepare('SELECT * FROM auto_arb_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT 1').get(userId) as any;
 }
 
-export function updateAutoArbSession(id: string, update: { status?: string; total_pnl_usd?: number; trades_count?: number }) {
-  if (update.status !== undefined) {
-    db.prepare('UPDATE auto_arb_sessions SET status = ? WHERE id = ?').run(update.status, id);
-  }
+/**
+ * Update PnL / trade-count counters. State transitions go through the FSM
+ * (arbMachine.send), not this helper, so we never accept `status` or
+ * `current_state` here.
+ */
+export function updateAutoArbSession(
+  id: string,
+  update: { total_pnl_usd?: number; trades_count?: number; failure_count?: number },
+) {
   if (update.total_pnl_usd !== undefined && update.trades_count !== undefined) {
-    db.prepare('UPDATE auto_arb_sessions SET total_pnl_usd = ?, trades_count = ? WHERE id = ?')
-      .run(update.total_pnl_usd, update.trades_count, id);
+    db.prepare('UPDATE auto_arb_sessions SET total_pnl_usd = ?, trades_count = ? WHERE id = ?').run(
+      update.total_pnl_usd, update.trades_count, id,
+    );
   }
-}
-
-export function stopAutoArbSession(userId: string) {
-  db.prepare("UPDATE auto_arb_sessions SET status = 'stopped' WHERE user_id = ? AND status = 'active'").run(userId);
+  if (update.failure_count !== undefined) {
+    db.prepare('UPDATE auto_arb_sessions SET failure_count = ? WHERE id = ?').run(update.failure_count, id);
+  }
 }
 
 export { db };

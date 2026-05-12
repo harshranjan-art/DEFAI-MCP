@@ -1,5 +1,6 @@
 import * as dbOps from '../../core/db';
 import { v4 as uuid } from 'uuid';
+import { arbMachine, getArbSessionState, ArbCtx } from '../../core/fsm/arbSession';
 
 export function executeArbAutoStart(
   userId: string,
@@ -35,13 +36,21 @@ export function executeArbAutoStart(
   ].join('\n');
 }
 
-export function executeArbAutoStop(userId: string): string {
+export async function executeArbAutoStop(userId: string): Promise<string> {
   const session = dbOps.getAutoArbSession(userId);
-  if (!session || session.status !== 'active') {
-    return 'No active auto-arb session found.';
+  if (!session) return 'No auto-arb session found.';
+  const currentState = getArbSessionState(session);
+  if (currentState === 'STOPPED' || currentState === 'FAILED') {
+    return `Auto-arb session is already ${currentState.toLowerCase()}.`;
   }
 
-  dbOps.stopAutoArbSession(userId);
+  const ctx: ArbCtx = {
+    sessionId: session.id,
+    pnlUsd: session.total_pnl_usd,
+    maxLossUsd: session.max_loss_usd,
+    failureCount: session.failure_count || 0,
+  };
+  await arbMachine.send(session.id, currentState, 'user_stopped', ctx);
 
   return [
     `Auto-arb session stopped.`,
@@ -62,21 +71,21 @@ export function executeArbAutoStatus(userId: string): string {
   const expires = new Date(session.expires_at);
   const now = new Date();
   const remaining = Math.max(0, (expires.getTime() - now.getTime()) / 1000 / 60);
-
-  const statusEmoji = session.status === 'active' ? '🟢' : session.status === 'expired' ? '⏱️' : '🔴';
+  const state = getArbSessionState(session);
+  const isActive = state !== 'STOPPED' && state !== 'FAILED';
 
   return [
     `Auto-arb Session Status`,
     ``,
-    `Status: ${statusEmoji} ${session.status.toUpperCase()}`,
+    `State: ${state}`,
     `Session ID: ${session.id}`,
     `Started: ${session.started_at}`,
     `Expires: ${session.expires_at}`,
-    session.status === 'active' ? `Time remaining: ${remaining.toFixed(0)} minutes` : '',
+    isActive ? `Time remaining: ${remaining.toFixed(0)} minutes` : '',
     ``,
     `Trades executed: ${session.trades_count}`,
     `Total P&L: $${Number(session.total_pnl_usd).toFixed(4)}`,
     `Loss limit: $${session.max_loss_usd}`,
     `Slippage tolerance: ${session.max_slippage_bps} bps`,
-  ].filter(l => l !== '').join('\n');
+  ].filter((l) => l !== '').join('\n');
 }

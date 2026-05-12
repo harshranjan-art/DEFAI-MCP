@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import * as dbOps from '../core/db';
 import * as arbScanner from '../core/strategy/arbScanner';
+import { arbMachine, getArbSessionState, ArbCtx } from '../core/fsm/arbSession';
 import { broadcastAlert, dispatch as dispatchAlert } from './alertDispatcher';
 import { logger } from '../utils/logger';
 
@@ -67,7 +68,13 @@ export function startArbWatcher(): void {
 
               // Stop session mid-cycle if loss limit crossed
               if (newPnl < -session.max_loss_usd) {
-                dbOps.updateAutoArbSession(session.id, { status: 'stopped' });
+                const ctx: ArbCtx = {
+                  sessionId: session.id,
+                  pnlUsd: newPnl,
+                  maxLossUsd: session.max_loss_usd,
+                  failureCount: session.failure_count || 0,
+                };
+                await arbMachine.send(session.id, getArbSessionState(session), 'loss_limit_hit', ctx);
                 await dispatchAlert(
                   session.user_id,
                   'arb_opportunity',

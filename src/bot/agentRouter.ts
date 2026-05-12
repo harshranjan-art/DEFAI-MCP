@@ -361,7 +361,7 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
     }
 
     case 'stop_arb_session': {
-      return executeArbAutoStop(userId);
+      return await executeArbAutoStop(userId);
     }
 
     case 'arb_execute': {

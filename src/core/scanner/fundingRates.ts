@@ -1,6 +1,10 @@
 import { logger } from '../../utils/logger';
 import { API_URLS } from '../../utils/constants';
 import { scannerCache } from './cache';
+import { CircuitBreaker, CircuitOpenError } from '../circuit';
+import { withRetry } from '../retry';
+
+const binanceBreaker = new CircuitBreaker('binance_funding');
 
 export interface FundingRate {
   symbol: string;
@@ -26,20 +30,25 @@ export async function getFundingRates(
 
   for (const symbol of symbols) {
     try {
-      const res = await fetch(
-        `${API_URLS.BINANCE_FUNDING}?symbol=${symbol}&limit=10`,
-        { signal: AbortSignal.timeout(8000) }
+      const data = await binanceBreaker.exec(() =>
+        withRetry(async () => {
+          const res = await fetch(`${API_URLS.BINANCE_FUNDING}?symbol=${symbol}&limit=10`, {
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!res.ok) throw new Error(`binance ${res.status}`);
+          return (await res.json()) as any[];
+        }, { attempts: 2 }),
       );
-      const data = await res.json() as any[];
 
       results[symbol] = data.map((d: any) => ({
         symbol: d.symbol,
-        fundingRate: parseFloat(d.fundingRate) * 100, // Convert to percentage
+        fundingRate: parseFloat(d.fundingRate) * 100,
         fundingTime: new Date(d.fundingTime).toISOString(),
         markPrice: parseFloat(d.markPrice || '0'),
       }));
     } catch (e: any) {
-      logger.warn('Binance funding rate fetch failed for %s: %s', symbol, e.message);
+      const isOpen = e instanceof CircuitOpenError;
+      logger.warn({ breaker: 'binance_funding', symbol, circuit_open: isOpen }, 'Binance funding fetch failed: %s', e.message);
       results[symbol] = [];
     }
   }

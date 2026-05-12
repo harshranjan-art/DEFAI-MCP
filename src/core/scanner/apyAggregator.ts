@@ -1,6 +1,16 @@
 import { logger } from '../../utils/logger';
 import { API_URLS } from '../../utils/constants';
 import { scannerCache } from './cache';
+import { CircuitBreaker, CircuitOpenError } from '../circuit';
+import { withRetry } from '../retry';
+
+const venusBreaker = new CircuitBreaker('venus_api');
+const beefyBreaker = new CircuitBreaker('beefy_api');
+const defillamaBreaker = new CircuitBreaker('defillama_api');
+
+function isCircuitOpen(e: unknown): e is CircuitOpenError {
+  return e instanceof CircuitOpenError;
+}
 
 export interface YieldOpportunity {
   protocol: string;
@@ -21,8 +31,13 @@ const CACHE_TTL = 120_000; // 2 minutes
 async function fetchVenus(): Promise<YieldOpportunity[]> {
   const results: YieldOpportunity[] = [];
   try {
-    const res = await fetch(API_URLS.VENUS, { signal: AbortSignal.timeout(8000) });
-    const json = await res.json() as any;
+    const json = await venusBreaker.exec(() =>
+      withRetry(async () => {
+        const res = await fetch(API_URLS.VENUS, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error(`venus ${res.status}`);
+        return (await res.json()) as any;
+      }, { attempts: 2 }),
+    );
     const markets: any[] = json?.result ?? json?.data?.markets ?? json?.markets ?? [];
 
     for (const m of markets) {
@@ -43,7 +58,7 @@ async function fetchVenus(): Promise<YieldOpportunity[]> {
       }
     }
   } catch (e: any) {
-    logger.warn('Venus API failed: %s', e.message);
+    logger.warn({ breaker: 'venus_api', circuit_open: isCircuitOpen(e) }, 'Venus API failed: %s', e.message);
     // Fallback BNB entry
     results.push({
       protocol: 'Venus',
@@ -63,12 +78,19 @@ async function fetchVenus(): Promise<YieldOpportunity[]> {
 async function fetchBeefy(): Promise<YieldOpportunity[]> {
   const results: YieldOpportunity[] = [];
   try {
-    const [apyRes, vaultRes] = await Promise.all([
-      fetch(API_URLS.BEEFY_APY, { signal: AbortSignal.timeout(10000) }),
-      fetch(API_URLS.BEEFY_VAULTS, { signal: AbortSignal.timeout(10000) }),
-    ]);
-    const apys = await apyRes.json() as Record<string, number>;
-    const vaults = await vaultRes.json() as any[];
+    const [apys, vaults] = await beefyBreaker.exec(() =>
+      withRetry(async () => {
+        const [apyRes, vaultRes] = await Promise.all([
+          fetch(API_URLS.BEEFY_APY, { signal: AbortSignal.timeout(10000) }),
+          fetch(API_URLS.BEEFY_VAULTS, { signal: AbortSignal.timeout(10000) }),
+        ]);
+        if (!apyRes.ok) throw new Error(`beefy-apy ${apyRes.status}`);
+        if (!vaultRes.ok) throw new Error(`beefy-vaults ${vaultRes.status}`);
+        const a = (await apyRes.json()) as Record<string, number>;
+        const v = (await vaultRes.json()) as any[];
+        return [a, v] as const;
+      }, { attempts: 2 }),
+    );
 
     const bscVaults = vaults.filter((v: any) => v.chain === 'bsc' && v.status === 'active');
 
@@ -90,7 +112,7 @@ async function fetchBeefy(): Promise<YieldOpportunity[]> {
       }
     }
   } catch (e: any) {
-    logger.warn('Beefy API failed: %s', e.message);
+    logger.warn({ breaker: 'beefy_api', circuit_open: isCircuitOpen(e) }, 'Beefy API failed: %s', e.message);
   }
   return results;
 }
@@ -98,8 +120,13 @@ async function fetchBeefy(): Promise<YieldOpportunity[]> {
 async function fetchDefiLlama(): Promise<YieldOpportunity[]> {
   const results: YieldOpportunity[] = [];
   try {
-    const res = await fetch(API_URLS.DEFILLAMA_YIELDS, { signal: AbortSignal.timeout(15000) });
-    const json = await res.json() as any;
+    const json = await defillamaBreaker.exec(() =>
+      withRetry(async () => {
+        const res = await fetch(API_URLS.DEFILLAMA_YIELDS, { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error(`defillama ${res.status}`);
+        return (await res.json()) as any;
+      }, { attempts: 2 }),
+    );
     const pools: any[] = json.data || [];
 
     const bsc = pools
@@ -120,7 +147,7 @@ async function fetchDefiLlama(): Promise<YieldOpportunity[]> {
       });
     }
   } catch (e: any) {
-    logger.warn('DefiLlama API failed: %s', e.message);
+    logger.warn({ breaker: 'defillama_api', circuit_open: isCircuitOpen(e) }, 'DefiLlama API failed: %s', e.message);
   }
   return results;
 }
