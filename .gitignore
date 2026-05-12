@@ -13,3 +13,8 @@ coverage/
 dashboard/node_modules/
 dashboard/dist/
 defai-master-plan.md
+
+# Private planning + study artifacts (local only, never push)
+learn/
+prep/
+refactor-plan/

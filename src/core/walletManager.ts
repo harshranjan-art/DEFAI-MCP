@@ -9,6 +9,7 @@ import { decrypt, getServerKey } from '../wallet/encryption';
 import * as dbOps from './db';
 import { ADDRESSES, getPimlicoUrl } from '../utils/constants';
 import { logger } from '../utils/logger';
+import { onShutdown } from '../utils/lifecycle';
 
 interface WalletSession {
   client: any; // SmartAccountClient — no explicit type to preserve concrete inference
@@ -16,16 +17,51 @@ interface WalletSession {
   address: Address;
 }
 
-// In-memory cache of active wallet sessions (hot wallets)
-const activeSessions = new Map<string, WalletSession>();
+interface CachedSession {
+  session: WalletSession;
+  lastUsedAt: number;
+}
+
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min idle
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5 min
+
+const activeSessions = new Map<string, CachedSession>();
+
+let sweeperStarted = false;
+function ensureSweeper(): void {
+  if (sweeperStarted) return;
+  sweeperStarted = true;
+  setInterval(() => {
+    const cutoff = Date.now() - SESSION_TTL_MS;
+    let evicted = 0;
+    for (const [userId, c] of activeSessions) {
+      if (c.lastUsedAt < cutoff) {
+        activeSessions.delete(userId);
+        evicted += 1;
+      }
+    }
+    if (evicted > 0) logger.info({ evicted }, 'wallet sessions evicted (idle TTL)');
+  }, SWEEP_INTERVAL_MS).unref();
+
+  // Drop decrypted-key-bearing sessions on graceful shutdown.
+  onShutdown(() => {
+    activeSessions.clear();
+    logger.info('wallet sessions cleared on shutdown');
+  });
+}
 
 /**
  * Activate a user's wallet for transacting.
+ * Idempotent — returns the cached session if active and within TTL.
  * Decrypts private key using server-side ENCRYPTION_KEY, initializes SmartAccountClient, caches in memory.
  */
 export async function activate(userId: string): Promise<Address> {
+  ensureSweeper();
   const existing = activeSessions.get(userId);
-  if (existing) return existing.address;
+  if (existing && Date.now() - existing.lastUsedAt < SESSION_TTL_MS) {
+    existing.lastUsedAt = Date.now();
+    return existing.session.address;
+  }
 
   const user = dbOps.getUser(userId);
   if (!user) throw new Error(`User ${userId} not found`);
@@ -77,7 +113,7 @@ export async function activate(userId: string): Promise<Address> {
     address: smartAccount.address,
   };
 
-  activeSessions.set(userId, session);
+  activeSessions.set(userId, { session, lastUsedAt: Date.now() });
   logger.info('Wallet activated for user %s (%s)', userId, smartAccount.address);
 
   return smartAccount.address;
@@ -85,19 +121,26 @@ export async function activate(userId: string): Promise<Address> {
 
 /**
  * Get the active wallet session for a user.
- * Throws if wallet is not activated.
+ * Throws if wallet is not activated. Bumps lastUsedAt to keep the session warm.
  */
 export function getClient(userId: string): WalletSession {
-  const session = activeSessions.get(userId);
-  if (!session) throw new Error(`Wallet not activated for user ${userId}. Call wallet_setup first.`);
-  return session;
+  const cached = activeSessions.get(userId);
+  if (!cached) throw new Error(`Wallet not activated for user ${userId}. Call wallet_setup first.`);
+  cached.lastUsedAt = Date.now();
+  return cached.session;
 }
 
 /**
  * Check if a user has an active wallet session.
  */
 export function isActive(userId: string): boolean {
-  return activeSessions.has(userId);
+  const cached = activeSessions.get(userId);
+  if (!cached) return false;
+  if (Date.now() - cached.lastUsedAt >= SESSION_TTL_MS) {
+    activeSessions.delete(userId);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -106,4 +149,11 @@ export function isActive(userId: string): boolean {
 export function deactivate(userId: string): void {
   activeSessions.delete(userId);
   logger.info('Wallet deactivated for user %s', userId);
+}
+
+/**
+ * Test-only helper. Returns the current cache size.
+ */
+export function _cacheSize(): number {
+  return activeSessions.size;
 }
