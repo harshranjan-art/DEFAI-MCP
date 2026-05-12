@@ -15,6 +15,7 @@ export interface Trade {
   gas_usd?: number;
   tx_hash: string;
   position_id?: string;
+  client_op_id?: string;
   executed_at: string;
 }
 
@@ -33,14 +34,13 @@ export function logTrade(trade: Omit<Trade, 'id' | 'executed_at'>): Trade {
     gas_usd: trade.gas_usd,
     tx_hash: trade.tx_hash,
     position_id: trade.position_id,
+    client_op_id: trade.client_op_id,
   });
   logger.info('Trade logged: %s (%s on %s, tx: %s)', id, trade.type, trade.protocol, trade.tx_hash);
   return getTrade(id)!;
 }
 
 export function getTrade(id: string): Trade | null {
-  const rows = dbOps.getTrades('', { limit: 1 });
-  // Direct lookup
   const row = dbOps.db.prepare('SELECT * FROM trades WHERE id = ?').get(id) as any;
   return row || null;
 }

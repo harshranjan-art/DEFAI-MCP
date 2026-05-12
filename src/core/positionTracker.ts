@@ -49,6 +49,7 @@ export function openPosition(pos: {
   current_value_usd?: number;
   tx_hash?: string;
   metadata?: Record<string, any>;
+  client_op_id?: string;
 }): Position {
   const id = `pos_${uuid().slice(0, 8)}`;
   dbOps.insertPosition({
@@ -63,6 +64,7 @@ export function openPosition(pos: {
     current_value_usd: pos.current_value_usd,
     tx_hash: pos.tx_hash,
     metadata: JSON.stringify(pos.metadata || {}),
+    client_op_id: pos.client_op_id,
   });
   logger.info('Position opened: %s (%s %s on %s)', id, pos.amount, pos.token, pos.protocol);
   return getPosition(id)!;

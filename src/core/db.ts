@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger';
+import { MIGRATION_002_SQL, MIGRATION_002_VERSION } from './migrations/002_idempotency';
+import { MIGRATION_003_SQL, MIGRATION_003_VERSION } from './migrations/003_confirmations';
 
 // __dirname is dist/src/core/ when compiled, src/core/ when running via ts-node.
 // Compiled: 3 levels up to project root. ts-node: use process.cwd() (always project root).
@@ -121,6 +123,23 @@ db.exec(`
 
 logger.info('SQLite database initialized at %s', DB_PATH);
 
+// ─── Migration runner ───
+// PRAGMA user_version is a single integer stored in the SQLite header.
+// It costs nothing to read and is the simplest version-tracker available.
+
+function runMigration(version: number, sql: string): void {
+  const cur = db.prepare(`PRAGMA user_version`).get() as { user_version: number };
+  if (cur.user_version >= version) return;
+  db.transaction(() => {
+    db.exec(sql);
+    db.exec(`PRAGMA user_version = ${version}`);
+  })();
+  logger.info('[db] applied migration %d', version);
+}
+
+runMigration(MIGRATION_002_VERSION, MIGRATION_002_SQL);
+runMigration(MIGRATION_003_VERSION, MIGRATION_003_SQL);
+
 // ─── User Helpers ───
 
 export function getUser(id: string) {
@@ -196,13 +215,15 @@ export function getPosition(id: string) {
 
 export function insertPosition(pos: {
   id: string; user_id: string; type: string; protocol: string; token: string;
-  amount: string; entry_price?: number; entry_apy?: number; current_value_usd?: number; tx_hash?: string; metadata?: string;
+  amount: string; entry_price?: number; entry_apy?: number; current_value_usd?: number;
+  tx_hash?: string; metadata?: string; client_op_id?: string;
 }) {
   db.prepare(`
-    INSERT INTO positions (id, user_id, type, protocol, token, amount, entry_price, entry_apy, current_value_usd, tx_hash, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO positions (id, user_id, type, protocol, token, amount, entry_price, entry_apy, current_value_usd, tx_hash, metadata, client_op_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(pos.id, pos.user_id, pos.type, pos.protocol, pos.token, pos.amount,
-    pos.entry_price ?? null, pos.entry_apy ?? null, pos.current_value_usd ?? null, pos.tx_hash ?? null, pos.metadata || '{}');
+    pos.entry_price ?? null, pos.entry_apy ?? null, pos.current_value_usd ?? null,
+    pos.tx_hash ?? null, pos.metadata || '{}', pos.client_op_id ?? null);
 }
 
 export function closePosition(id: string, closeTxHash?: string) {
@@ -229,14 +250,15 @@ export function getTrades(userId: string, opts?: { limit?: number; type?: string
 export function insertTrade(trade: {
   id: string; user_id: string; type: string; protocol: string; tx_hash: string;
   from_token?: string; to_token?: string; from_amount?: string; to_amount?: string;
-  price_usd?: number; gas_usd?: number; position_id?: string;
+  price_usd?: number; gas_usd?: number; position_id?: string; client_op_id?: string;
 }) {
   db.prepare(`
-    INSERT INTO trades (id, user_id, type, protocol, from_token, to_token, from_amount, to_amount, price_usd, gas_usd, tx_hash, position_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO trades (id, user_id, type, protocol, from_token, to_token, from_amount, to_amount, price_usd, gas_usd, tx_hash, position_id, client_op_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(trade.id, trade.user_id, trade.type, trade.protocol, trade.from_token ?? null,
     trade.to_token ?? null, trade.from_amount ?? null, trade.to_amount ?? null,
-    trade.price_usd ?? null, trade.gas_usd ?? null, trade.tx_hash, trade.position_id ?? null);
+    trade.price_usd ?? null, trade.gas_usd ?? null, trade.tx_hash, trade.position_id ?? null,
+    trade.client_op_id ?? null);
 }
 
 // ─── Alert Helpers ───

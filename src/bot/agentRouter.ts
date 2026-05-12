@@ -7,12 +7,15 @@
 import Groq from 'groq-sdk';
 import * as engine from '../core/engine';
 import * as walletManager from '../core/walletManager';
-import { formatDepositResult } from '../mcp/tools/yieldDeposit';
+import { executeYieldDeposit, formatDepositResult } from '../mcp/tools/yieldDeposit';
+import { executeSwapTokens } from '../mcp/tools/swapTokens';
+import { executeSendTokens } from '../mcp/tools/sendTokens';
 import { executeArbAutoStart, executeArbAutoStop } from '../mcp/tools/arbAuto';
 import { executeArbExecute } from '../mcp/tools/arbExecute';
 import { executeDeltaNeutralOpen, executeDeltaNeutralClose } from '../mcp/tools/deltaNeutral';
 import { executeRiskConfig } from '../mcp/tools/riskConfig';
 import { executeSetAlert, executeGetAlerts } from '../mcp/tools/setAlerts';
+import { newClientOpId } from '../core/idempotency';
 import { logger } from '../utils/logger';
 
 let groq: Groq | null = null;
@@ -279,14 +282,18 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
   switch (name) {
     case 'yield_deposit': {
       await walletManager.activate(userId);
-      const result = await engine.yieldDeposit(userId, args.token, args.amount);
-      return formatDepositResult(result);
+      return await executeYieldDeposit(userId, args.token, args.amount, args.protocol, {
+        client_op_id: args.client_op_id ?? newClientOpId(),
+        confirmation_token: args.confirmation_token,
+      });
     }
 
     case 'swap_tokens': {
       await walletManager.activate(userId);
-      const result = await engine.swapTokens(userId, args.from_token, args.to_token, args.amount);
-      return result.message;
+      return await executeSwapTokens(userId, args.from_token, args.to_token, args.amount, {
+        client_op_id: args.client_op_id ?? newClientOpId(),
+        confirmation_token: args.confirmation_token,
+      });
     }
 
     case 'scan_markets': {
@@ -363,7 +370,10 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
 
     case 'delta_neutral_open': {
       await walletManager.activate(userId);
-      return await executeDeltaNeutralOpen(userId, args.token, args.notional_usd, args.max_funding_rate);
+      return await executeDeltaNeutralOpen(userId, args.token, args.notional_usd, args.max_funding_rate, {
+        client_op_id: args.client_op_id ?? newClientOpId(),
+        confirmation_token: args.confirmation_token,
+      });
     }
 
     case 'delta_neutral_close': {
@@ -386,8 +396,10 @@ async function executeTool(name: string, args: ToolArgs, userId: string): Promis
 
     case 'send_tokens': {
       await walletManager.activate(userId);
-      const result = await engine.sendTokens(userId, args.token, args.amount, args.to_address);
-      return result.message + (result.explorerUrl ? `\nTx: ${result.explorerUrl}` : '');
+      return await executeSendTokens(userId, args.token, args.amount, args.to_address, {
+        client_op_id: args.client_op_id ?? newClientOpId(),
+        confirmation_token: args.confirmation_token,
+      });
     }
 
     default:
