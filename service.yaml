@@ -1,0 +1,100 @@
+# Cloud Run service definition for DeFAI.
+#
+# Apply with:
+#   gcloud run services replace service.yaml --region=us-central1
+#
+# This is the declarative equivalent of the cloudbuild.yaml deploy step.
+# Use this file when you want gitops-style reviews of service config
+# changes; use cloudbuild.yaml when CI handles deploys end-to-end.
+#
+# Placeholders to fill in before applying:
+#   PROJECT_ID, REGION, CLOUDSQL_INSTANCE
+#   The image tag (use a commit SHA, never :latest in production)
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: defai
+  labels:
+    cloud.googleapis.com/location: us-central1
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Avoid cold starts — important for Telegram webhook responsiveness
+        # (Telegram retries with backoff if the first POST times out).
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        # Mounts the Cloud SQL Auth Proxy as a unix socket at
+        # /cloudsql/<INSTANCE>. App code connects via that path when
+        # CLOUD_SQL_CONNECTION_NAME is set.
+        run.googleapis.com/cloudsql-instances: "PROJECT_ID:REGION:CLOUDSQL_INSTANCE"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      serviceAccountName: defai-sa@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - name: defai
+          image: REGION-docker.pkg.dev/PROJECT_ID/defai/defai:COMMIT_SHA
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            # Non-secret config
+            - name: NODE_ENV
+              value: production
+            - name: LLM_PROVIDER
+              value: vertex
+            - name: VECTOR_MEMORY_PROVIDER
+              value: vertex
+            - name: TELEGRAM_MODE
+              value: webhook
+            - name: GCP_PROJECT_ID
+              value: PROJECT_ID
+            - name: GCP_LOCATION
+              value: REGION
+            - name: CLOUD_SQL_CONNECTION_NAME
+              value: "PROJECT_ID:REGION:CLOUDSQL_INSTANCE"
+            # Secrets — values pulled from Secret Manager at boot.
+            - name: ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: defai-encryption-key, key: latest } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: defai-jwt-secret, key: latest } }
+            - name: PRIVATE_KEY
+              valueFrom: { secretKeyRef: { name: defai-private-key, key: latest } }
+            - name: PIMLICO_API_KEY
+              valueFrom: { secretKeyRef: { name: defai-pimlico-key, key: latest } }
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom: { secretKeyRef: { name: defai-telegram-token, key: latest } }
+            - name: TELEGRAM_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: defai-telegram-webhook-secret, key: latest } }
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: defai-postgres-user, key: latest } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: defai-postgres-password, key: latest } }
+            - name: POSTGRES_DATABASE
+              valueFrom: { secretKeyRef: { name: defai-postgres-database, key: latest } }
+            # GROQ_API_KEY kept as fallback so LLM_PROVIDER=groq still works.
+            - name: GROQ_API_KEY
+              valueFrom: { secretKeyRef: { name: defai-groq-key, key: latest } }
+          startupProbe:
+            httpGet:
+              path: /api/health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+            periodSeconds: 30
+  traffic:
+    - percent: 100
+      latestRevision: true

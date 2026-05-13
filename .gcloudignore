@@ -1,0 +1,53 @@
+# Keep `gcloud builds submit` uploads small.
+#
+# Mirror .gitignore + drop dev-only artifacts that aren't already there.
+
+.git
+.gitignore
+.gitattributes
+
+# Local SQLite + WAL
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+npm-debug.log
+.npm
+.pnp
+.pnp.js
+
+# Dashboard build artifacts are produced inside the container; don't ship the
+# host-built copy.
+dashboard/dist/
+dashboard/node_modules/
+
+# TypeScript build output (rebuilt inside the container)
+dist/
+
+# Local dev
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private planning artifacts (per CLAUDE.md memory)
+refactor-plan/
+learn/
+prep/
+
+# Test artifacts
+coverage/
+test-results/
+.vitest/
+
+# Docker local-dev compose files (Cloud Run doesn't need them)
+docker-compose.yml
+docker-compose.postgres.yml
