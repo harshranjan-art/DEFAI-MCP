@@ -2,9 +2,11 @@
  * Agent Router — LLM tool-calling layer for the Telegram bot.
  * The LLM decides which tool to invoke (and with what args) based on user message.
  * If no tool matches, it responds conversationally.
+ *
+ * Provider-agnostic since Phase 7A: every chat call routes through
+ * LLMProvider (Groq today, Vertex AI after Phase 7B).
  */
 
-import Groq from 'groq-sdk';
 import * as engine from '../core/engine';
 import * as walletManager from '../core/walletManager';
 import { executeYieldDeposit, formatDepositResult } from '../mcp/tools/yieldDeposit';
@@ -23,233 +25,175 @@ import { classifyIntent, pickPlannerModel, type IntentVerdict } from './intentCl
 import { startTrace, newTraceId } from '../observability/tracer';
 import { recordCost, isBudgetExceeded } from '../observability/cost';
 import * as riskManager from '../core/riskManager';
+import { getLLMProvider } from '../llm';
+import type { LLMToolDef } from '../llm';
 import { logger } from '../utils/logger';
 
-let groq: Groq | null = null;
-
-function getGroq(): Groq {
-  if (!groq) {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error('GROQ_API_KEY is not set — Telegram agent router disabled');
-    }
-    groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  }
-  return groq;
-}
-
-const TOOLS: Groq.Chat.ChatCompletionTool[] = [
+const TOOLS: LLMToolDef[] = [
   {
-    type: 'function',
-    function: {
-      name: 'yield_deposit',
-      description: 'Deposit tokens into the best yield protocol (Venus, Beefy, etc.)',
-      parameters: {
-        type: 'object',
-        required: ['amount', 'token'],
-        properties: {
-          amount: { type: 'string', description: 'Amount to deposit, e.g. "0.1"' },
-          token: { type: 'string', description: 'Token symbol, e.g. "BNB", "USDT"' },
+    name: 'yield_deposit',
+    description: 'Deposit tokens into the best yield protocol (Venus, Beefy, etc.)',
+    parameters: {
+      type: 'object',
+      required: ['amount', 'token'],
+      properties: {
+        amount: { type: 'string', description: 'Amount to deposit, e.g. "0.1"' },
+        token: { type: 'string', description: 'Token symbol, e.g. "BNB", "USDT"' },
+      },
+    },
+  },
+  {
+    name: 'swap_tokens',
+    description: 'Swap one token for another via PancakeSwap V2',
+    parameters: {
+      type: 'object',
+      required: ['from_token', 'to_token', 'amount'],
+      properties: {
+        from_token: { type: 'string', description: 'Token to sell, e.g. "BNB"' },
+        to_token: { type: 'string', description: 'Token to buy, e.g. "USDT"' },
+        amount: { type: 'string', description: 'Amount of from_token to swap' },
+      },
+    },
+  },
+  {
+    name: 'scan_markets',
+    description: 'Scan market data: yields/APYs, prices, funding rates, or arbitrage opportunities',
+    parameters: {
+      type: 'object',
+      required: ['category'],
+      properties: {
+        category: {
+          type: 'string',
+          enum: ['yield', 'prices', 'funding_rates', 'arbitrage', 'all'],
+          description: '"yield" for APYs, "prices" for token prices, "arbitrage" for cross-DEX spreads, "all" for everything',
         },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'swap_tokens',
-      description: 'Swap one token for another via PancakeSwap V2',
-      parameters: {
-        type: 'object',
-        required: ['from_token', 'to_token', 'amount'],
-        properties: {
-          from_token: { type: 'string', description: 'Token to sell, e.g. "BNB"' },
-          to_token: { type: 'string', description: 'Token to buy, e.g. "USDT"' },
-          amount: { type: 'string', description: 'Amount of from_token to swap' },
-        },
+    name: 'get_portfolio',
+    description: 'Get the user portfolio: active positions, total value, yield earned, arb profits',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_trade_history',
+    description: 'Get recent trade history. Use trade_type to filter: "arb" for arbitrage trades, "deposit" for yield deposits, "swap" for token swaps. Omit trade_type for all trades.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { description: 'Number of trades to return (default 10)' },
+        trade_type: { type: 'string', description: 'Filter by trade type: "arb", "deposit", or "swap". Omit for all.' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'scan_markets',
-      description: 'Scan market data: yields/APYs, prices, funding rates, or arbitrage opportunities',
-      parameters: {
-        type: 'object',
-        required: ['category'],
-        properties: {
-          category: {
-            type: 'string',
-            enum: ['yield', 'prices', 'funding_rates', 'arbitrage', 'all'],
-            description: '"yield" for APYs, "prices" for token prices, "arbitrage" for cross-DEX spreads, "all" for everything',
-          },
-        },
+    name: 'get_arb_status',
+    description: 'Check the CURRENTLY ACTIVE arbitrage bot session: status, PnL, trade count, expiry. Only use for current/live session — use get_trade_history with trade_type="arb" for past arb trades.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'rotate_position',
+    description: 'Rotate an existing yield position to a higher APY protocol',
+    parameters: {
+      type: 'object',
+      required: ['position_id'],
+      properties: {
+        position_id: { type: 'string', description: 'Position ID from portfolio, e.g. "pos_abc123"' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_portfolio',
-      description: 'Get the user portfolio: active positions, total value, yield earned, arb profits',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_trade_history',
-      description: 'Get recent trade history. Use trade_type to filter: "arb" for arbitrage trades, "deposit" for yield deposits, "swap" for token swaps. Omit trade_type for all trades.',
-      parameters: {
-        type: 'object',
-        properties: {
-          limit: { description: 'Number of trades to return (default 10)' },
-          trade_type: { type: 'string', description: 'Filter by trade type: "arb", "deposit", or "swap". Omit for all.' },
-        },
+    name: 'start_arb_session',
+    description: 'Start an automated arbitrage bot session. Scans every 30s and executes viable cross-DEX trades. Stops when duration expires or loss limit is hit.',
+    parameters: {
+      type: 'object',
+      properties: {
+        duration_hours: { type: 'number', description: 'How long to run in hours (default 1)' },
+        max_loss_usd: { type: 'number', description: 'Stop if cumulative loss exceeds this USD amount (default 5)' },
+        max_slippage_bps: { type: 'number', description: 'Max slippage in basis points (default 50 = 0.5%)' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_arb_status',
-      description: 'Check the CURRENTLY ACTIVE arbitrage bot session: status, PnL, trade count, expiry. Only use for current/live session — use get_trade_history with trade_type="arb" for past arb trades.',
-      parameters: { type: 'object', properties: {} },
-    },
+    name: 'stop_arb_session',
+    description: 'Stop the currently active arbitrage bot session early',
+    parameters: { type: 'object', properties: {} },
   },
   {
-    type: 'function',
-    function: {
-      name: 'rotate_position',
-      description: 'Rotate an existing yield position to a higher APY protocol',
-      parameters: {
-        type: 'object',
-        required: ['position_id'],
-        properties: {
-          position_id: { type: 'string', description: 'Position ID from portfolio, e.g. "pos_abc123"' },
-        },
+    name: 'arb_execute',
+    description: 'Scan for and execute a specific arbitrage opportunity. Without opportunity_id, lists available opportunities. With opportunity_id, executes that specific trade.',
+    parameters: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity to execute. Omit to just list available opportunities.' },
+        max_slippage_bps: { type: 'number', description: 'Max slippage in basis points (default 50)' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'start_arb_session',
-      description: 'Start an automated arbitrage bot session. Scans every 30s and executes viable cross-DEX trades. Stops when duration expires or loss limit is hit.',
-      parameters: {
-        type: 'object',
-        properties: {
-          duration_hours: { type: 'number', description: 'How long to run in hours (default 1)' },
-          max_loss_usd: { type: 'number', description: 'Stop if cumulative loss exceeds this USD amount (default 5)' },
-          max_slippage_bps: { type: 'number', description: 'Max slippage in basis points (default 50 = 0.5%)' },
-        },
+    name: 'delta_neutral_open',
+    description: 'Open a delta-neutral hedged position: spot deposit + virtual short to earn funding yield with no directional exposure',
+    parameters: {
+      type: 'object',
+      required: ['token', 'notional_usd'],
+      properties: {
+        token: { type: 'string', description: 'Token to hedge, e.g. "BNB"' },
+        notional_usd: { type: 'string', description: 'Position size in USD, e.g. "100"' },
+        max_funding_rate: { type: 'number', description: 'Max acceptable funding rate (optional)' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'stop_arb_session',
-      description: 'Stop the currently active arbitrage bot session early',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'arb_execute',
-      description: 'Scan for and execute a specific arbitrage opportunity. Without opportunity_id, lists available opportunities. With opportunity_id, executes that specific trade.',
-      parameters: {
-        type: 'object',
-        properties: {
-          opportunity_id: { type: 'string', description: 'ID of the opportunity to execute. Omit to just list available opportunities.' },
-          max_slippage_bps: { type: 'number', description: 'Max slippage in basis points (default 50)' },
-        },
+    name: 'delta_neutral_close',
+    description: 'Close an existing delta-neutral position and realize PnL',
+    parameters: {
+      type: 'object',
+      required: ['position_id'],
+      properties: {
+        position_id: { type: 'string', description: 'Position ID to close, e.g. "pos_abc123"' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'delta_neutral_open',
-      description: 'Open a delta-neutral hedged position: spot deposit + virtual short to earn funding yield with no directional exposure',
-      parameters: {
-        type: 'object',
-        required: ['token', 'notional_usd'],
-        properties: {
-          token: { type: 'string', description: 'Token to hedge, e.g. "BNB"' },
-          notional_usd: { type: 'string', description: 'Position size in USD, e.g. "100"' },
-          max_funding_rate: { type: 'number', description: 'Max acceptable funding rate (optional)' },
-        },
+    name: 'risk_config',
+    description: 'View or update risk management settings: max position size, max exposure, slippage, allowed protocols',
+    parameters: {
+      type: 'object',
+      properties: {
+        max_position_usd: { type: 'number', description: 'Max single position size in USD' },
+        max_total_exposure_usd: { type: 'number', description: 'Max total portfolio exposure in USD' },
+        max_slippage_bps: { type: 'number', description: 'Max slippage in basis points' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'delta_neutral_close',
-      description: 'Close an existing delta-neutral position and realize PnL',
-      parameters: {
-        type: 'object',
-        required: ['position_id'],
-        properties: {
-          position_id: { type: 'string', description: 'Position ID to close, e.g. "pos_abc123"' },
-        },
+    name: 'set_alert',
+    description: 'Enable or disable an alert type. Types: "apy_drop", "arb_opportunity", "position_health"',
+    parameters: {
+      type: 'object',
+      required: ['alert_type', 'active'],
+      properties: {
+        alert_type: { type: 'string', description: '"apy_drop", "arb_opportunity", or "position_health"' },
+        active: { type: 'boolean', description: 'true to enable, false to disable' },
+        threshold: { type: 'number', description: 'Optional threshold value for the alert' },
       },
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'risk_config',
-      description: 'View or update risk management settings: max position size, max exposure, slippage, allowed protocols',
-      parameters: {
-        type: 'object',
-        properties: {
-          max_position_usd: { type: 'number', description: 'Max single position size in USD' },
-          max_total_exposure_usd: { type: 'number', description: 'Max total portfolio exposure in USD' },
-          max_slippage_bps: { type: 'number', description: 'Max slippage in basis points' },
-        },
-      },
-    },
+    name: 'get_alerts',
+    description: 'View all configured alerts and their current status',
+    parameters: { type: 'object', properties: {} },
   },
   {
-    type: 'function',
-    function: {
-      name: 'set_alert',
-      description: 'Enable or disable an alert type. Types: "apy_drop", "arb_opportunity", "position_health"',
-      parameters: {
-        type: 'object',
-        required: ['alert_type', 'active'],
-        properties: {
-          alert_type: { type: 'string', description: '"apy_drop", "arb_opportunity", or "position_health"' },
-          active: { type: 'boolean', description: 'true to enable, false to disable' },
-          threshold: { type: 'number', description: 'Optional threshold value for the alert' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_alerts',
-      description: 'View all configured alerts and their current status',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'send_tokens',
-      description: 'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address',
-      parameters: {
-        type: 'object',
-        required: ['token', 'amount', 'to_address'],
-        properties: {
-          token: { type: 'string', description: 'Token to send: BNB, USDT, or WBNB' },
-          amount: { type: 'string', description: 'Amount to send, e.g. "0.01"' },
-          to_address: { type: 'string', description: 'Recipient wallet address (0x...)' },
-        },
+    name: 'send_tokens',
+    description: 'Send BNB or ERC-20 tokens (USDT, WBNB) directly to a wallet address',
+    parameters: {
+      type: 'object',
+      required: ['token', 'amount', 'to_address'],
+      properties: {
+        token: { type: 'string', description: 'Token to send: BNB, USDT, or WBNB' },
+        amount: { type: 'string', description: 'Amount to send, e.g. "0.01"' },
+        to_address: { type: 'string', description: 'Recipient wallet address (0x...)' },
       },
     },
   },
@@ -303,7 +247,7 @@ function addToHistory(userId: string, role: 'user' | 'assistant', content: strin
  * Build the message array passed to the planner: optional summary at the
  * head (when history exceeds SUMMARIZE_THRESHOLD) + last KEEP_VERBATIM
  * messages verbatim. Falls back to hard truncation if summarizer returns
- * null (Groq error) — see summarizer.ts.
+ * null (LLM error) — see summarizer.ts.
  */
 async function buildPrunedHistory(
   userId: string,
@@ -559,11 +503,11 @@ async function executeTool(name: string, args: ToolArgs, userId: string, userMes
   }
 }
 
-const PLANNER_MODEL_FLAGSHIP = 'llama-3.3-70b-versatile';
-
 export async function route(userId: string, message: string): Promise<string> {
   const trace_id = newTraceId();
   logger.info({ trace_id, user_id: userId, surface: 'bot', user_message_preview: message.slice(0, 80) }, 'agentRouter.route');
+
+  const provider = getLLMProvider();
 
   // Daily LLM-cost cap: bail out before any LLM spend if user is over budget.
   // Cap defaults to $2/day; configurable via risk_config.dailyLlmCostCapUsd.
@@ -579,7 +523,7 @@ export async function route(userId: string, message: string): Promise<string> {
   }
 
   // Phase 6.5 — classify intent BEFORE adding to history, so we route the
-  // planner without conversation context biasing the classifier. The 8B
+  // planner without conversation context biasing the classifier. The fast
   // classifier is ~$0.0001/turn; net savings on read-only queries.
   let intent: IntentVerdict;
   try {
@@ -588,8 +532,10 @@ export async function route(userId: string, message: string): Promise<string> {
     logger.warn({ err: e?.message, trace_id }, 'intent classifier wrapper threw; using flagship planner');
     intent = { intent: 'ambiguous', confidence: 0, reason: 'classifier threw' };
   }
-  const plannerModel = process.env.DISABLE_INTENT_ROUTING === '1' ? PLANNER_MODEL_FLAGSHIP : pickPlannerModel(intent);
-  logger.info({ trace_id, intent: intent.intent, confidence: intent.confidence, plannerModel }, 'intent classified');
+  const plannerModel = process.env.DISABLE_INTENT_ROUTING === '1'
+    ? provider.modelFor('planner')
+    : pickPlannerModel(intent, provider);
+  logger.info({ trace_id, intent: intent.intent, confidence: intent.confidence, plannerModel, llm_provider: provider.name }, 'intent classified');
 
   addToHistory(userId, 'user', message);
 
@@ -605,57 +551,51 @@ export async function route(userId: string, message: string): Promise<string> {
     ];
 
     const plannerSpan = trace.generation('planner.llm', { model: plannerModel, input: messages });
-    const response = await getGroq().chat.completions.create({
+    const result = await provider.chat({
+      task: 'planner',
       model: plannerModel,
       messages,
       tools: TOOLS,
-      tool_choice: 'auto',
-      max_tokens: 500,
+      toolChoice: 'auto',
+      maxTokens: 500,
       temperature: 0.1,
     });
 
-    // Record planner cost. Groq returns usage on the response.
-    const usage = (response as any).usage;
-    if (usage) {
-      const cost = recordCost({
-        trace_id,
-        user_id: userId,
-        model: plannerModel,
-        task: 'planner',
-        input_tokens: usage.prompt_tokens ?? 0,
-        input_cached_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-        output_tokens: usage.completion_tokens ?? 0,
-      });
-      plannerSpan.endWithUsage({
-        output: response.choices[0]?.message,
-        usage: {
-          input_tokens: usage.prompt_tokens ?? 0,
-          output_tokens: usage.completion_tokens ?? 0,
-          cached_input_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-        },
-        cost_usd: cost,
-      });
-    } else {
-      plannerSpan.end(response.choices[0]?.message);
-    }
-
-    const choice = response.choices[0];
+    // Record planner cost. Provider normalizes usage across SDKs.
+    const cost = recordCost({
+      trace_id,
+      user_id: userId,
+      model: result.model,
+      task: 'planner',
+      input_tokens: result.usage.input_tokens,
+      input_cached_tokens: result.usage.cached_input_tokens,
+      output_tokens: result.usage.output_tokens,
+    });
+    plannerSpan.endWithUsage({
+      output: result.tool_calls.length > 0 ? { tool_calls: result.tool_calls } : { content: result.content },
+      usage: {
+        input_tokens: result.usage.input_tokens,
+        output_tokens: result.usage.output_tokens,
+        cached_input_tokens: result.usage.cached_input_tokens,
+      },
+      cost_usd: cost,
+    });
 
     let reply: string;
-    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-      const toolCall = choice.message.tool_calls[0];
-      const parsedArgs = JSON.parse(toolCall.function.arguments) ?? {};
-      const toolSpan = trace.child(`engine.${toolCall.function.name}`, { args: toolCall.function.arguments });
+    if (result.tool_calls.length > 0) {
+      const toolCall = result.tool_calls[0];
+      const parsedArgs = JSON.parse(toolCall.arguments) ?? {};
+      const toolSpan = trace.child(`engine.${toolCall.name}`, { args: toolCall.arguments });
       try {
-        reply = await executeTool(toolCall.function.name, parsedArgs, userId, message, trace_id);
+        reply = await executeTool(toolCall.name, parsedArgs, userId, message, trace_id);
         toolSpan.end({ reply_preview: reply.slice(0, 200) });
-        notifyListener(toolCall.function.name, parsedArgs, userId, reply, trace_id);
+        notifyListener(toolCall.name, parsedArgs, userId, reply, trace_id);
       } catch (e: any) {
         toolSpan.end({ err: e?.message }, { status: 'error', error: e?.message });
         throw e;
       }
     } else {
-      reply = choice.message.content?.trim() || "I'm not sure how to help with that. Try /help for available commands.";
+      reply = result.content?.trim() || "I'm not sure how to help with that. Try /help for available commands.";
     }
 
     addToHistory(userId, 'assistant', reply);

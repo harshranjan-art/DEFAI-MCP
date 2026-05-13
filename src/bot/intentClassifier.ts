@@ -1,26 +1,27 @@
 /**
- * Intent classifier — 8B-Instant call that labels the user's incoming
+ * Intent classifier — fast small-model call that labels the user's incoming
  * message before the planner runs. Routing tier:
  *
- *   intent='read_only' + high confidence  → cheaper 70B planner variant
- *   intent='write' OR low confidence       → flagship 70B planner
- *   intent='meta'                          → cheaper 70B planner
- *   intent='ambiguous'                     → flagship 70B planner
+ *   intent='read_only' + high confidence  → cheap planner variant
+ *   intent='write' OR low confidence       → flagship planner
+ *   intent='meta'                          → cheap planner
+ *   intent='ambiguous'                     → flagship planner
  *
- * The classifier itself runs on Llama-3.1-8B-Instant (~$0.0001/turn).
- * Even if it routes incorrectly, the actual answer quality is gated by
- * the eval suite — see refactor-plan/phase-6-optimizations.md task 6.2.
+ * The classifier runs on Llama-3.1-8B-Instant (Groq) or Gemini 3 Flash
+ * (Vertex) — both ~$0.0001/turn. Even if it routes incorrectly, the actual
+ * answer quality is gated by the eval suite — see refactor-plan/phase-6-optimizations.md task 6.2.
  *
  * Fail-soft: classifier errors return ambiguous → flagship; we never let
  * an observability failure downgrade the planner.
+ *
+ * Provider-agnostic since Phase 7A.
  */
 
-import Groq from 'groq-sdk';
 import { z } from 'zod';
+import { getLLMProvider } from '../llm';
+import type { LLMProvider } from '../llm';
 import { logger } from '../utils/logger';
 import { recordCost } from '../observability/cost';
-
-export const INTENT_MODEL = 'llama-3.1-8b-instant';
 
 const IntentSchema = z.object({
   intent: z.enum(['read_only', 'write', 'meta', 'ambiguous']),
@@ -48,54 +49,43 @@ const AMBIGUOUS_FALLBACK: IntentVerdict = {
 };
 
 export interface ClassifyOptions {
-  /** Inject a Groq stub for tests. */
-  groqOverride?: Pick<Groq, 'chat'>;
+  /** Inject an LLMProvider stub for tests. */
+  providerOverride?: LLMProvider;
   trace_id?: string;
   user_id?: string;
-}
-
-let cachedGroq: Groq | null = null;
-function getGroqClient(): Groq {
-  if (cachedGroq) return cachedGroq;
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not set — intent classifier disabled');
-  }
-  cachedGroq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return cachedGroq;
 }
 
 export async function classifyIntent(message: string, opts: ClassifyOptions = {}): Promise<IntentVerdict> {
   if (!message || message.trim().length === 0) return AMBIGUOUS_FALLBACK;
 
-  const client = opts.groqOverride ?? getGroqClient();
+  const provider = opts.providerOverride ?? getLLMProvider();
 
   let raw: string;
+  let resolvedModel: string;
   try {
-    const completion = await client.chat.completions.create({
-      model: INTENT_MODEL,
+    const result = await provider.chat({
+      task: 'intent',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: message.slice(0, 1024) },
       ],
       temperature: 0,
-      max_tokens: 80,
-      response_format: { type: 'json_object' },
+      maxTokens: 80,
+      responseFormat: 'json_object',
     });
-    raw = completion.choices?.[0]?.message?.content ?? '';
+    raw = result.content ?? '';
+    resolvedModel = result.model;
 
     if (opts.trace_id) {
-      const usage = (completion as any).usage;
-      if (usage) {
-        recordCost({
-          trace_id: opts.trace_id,
-          user_id: opts.user_id,
-          model: INTENT_MODEL,
-          task: 'intent',
-          input_tokens: usage.prompt_tokens ?? 0,
-          input_cached_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-          output_tokens: usage.completion_tokens ?? 0,
-        });
-      }
+      recordCost({
+        trace_id: opts.trace_id,
+        user_id: opts.user_id,
+        model: result.model,
+        task: 'intent',
+        input_tokens: result.usage.input_tokens,
+        input_cached_tokens: result.usage.cached_input_tokens,
+        output_tokens: result.usage.output_tokens,
+      });
     }
   } catch (e: any) {
     logger.warn({ err: e?.message }, 'intent classifier call failed; defaulting to ambiguous');
@@ -106,12 +96,12 @@ export async function classifyIntent(message: string, opts: ClassifyOptions = {}
   try {
     parsed = JSON.parse(raw);
   } catch {
-    logger.warn({ raw }, 'intent classifier output not valid JSON');
+    logger.warn({ raw, model: resolvedModel }, 'intent classifier output not valid JSON');
     return AMBIGUOUS_FALLBACK;
   }
   const result = IntentSchema.safeParse(parsed);
   if (!result.success) {
-    logger.warn({ issues: result.error.issues }, 'intent classifier output failed schema');
+    logger.warn({ issues: result.error.issues, model: resolvedModel }, 'intent classifier output failed schema');
     return AMBIGUOUS_FALLBACK;
   }
   return result.data;
@@ -121,11 +111,19 @@ export async function classifyIntent(message: string, opts: ClassifyOptions = {}
  * Map a classified intent + confidence to the planner model to use.
  * Cheap variant only fires when we're confident the intent is read_only or
  * meta — anything ambiguous or write-y goes to the flagship model.
+ *
+ * Provider-aware:
+ *   - Groq:   cheap = Llama 70B-versatile (legacy), flagship = Llama 3.3 70B-versatile
+ *   - Vertex: cheap = Gemini 3 Flash,             flagship = Gemini 3 Pro
+ *
+ * Returning concrete model IDs (vs an abstract tier label) keeps the cost
+ * tracker and tracer tags accurate without an extra resolution step.
  */
-export function pickPlannerModel(verdict: IntentVerdict): string {
-  const CHEAP = 'llama-3.1-70b-versatile';
-  const FLAGSHIP = 'llama-3.3-70b-versatile';
-  if (verdict.confidence < 0.7) return FLAGSHIP;
-  if (verdict.intent === 'read_only' || verdict.intent === 'meta') return CHEAP;
-  return FLAGSHIP;
+export function pickPlannerModel(verdict: IntentVerdict, provider: LLMProvider): string {
+  const wantCheap =
+    verdict.confidence >= 0.7 && (verdict.intent === 'read_only' || verdict.intent === 'meta');
+  if (provider.name === 'groq') {
+    return wantCheap ? 'llama-3.1-70b-versatile' : 'llama-3.3-70b-versatile';
+  }
+  return wantCheap ? 'gemini-3-flash' : 'gemini-3-pro';
 }

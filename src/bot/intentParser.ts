@@ -1,8 +1,14 @@
-import Groq from 'groq-sdk';
-import 'dotenv/config';
-import { logger } from '../utils/logger';
+/**
+ * Legacy intent parser — preserved as a fallback path for callers that
+ * predate the agent router. New code paths should use agentRouter directly.
+ *
+ * Routes through LLMProvider since Phase 7A — works on Groq (Llama) and
+ * Vertex (Gemini 3) without code changes.
+ */
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+import 'dotenv/config';
+import { getLLMProvider } from '../llm';
+import { logger } from '../utils/logger';
 
 export interface Intent {
   type: 'YIELD' | 'SWAP' | 'ARB' | 'DELTA_NEUTRAL' | 'SCAN' | 'PORTFOLIO' | 'TRADES' | 'RISK' | 'UNKNOWN';
@@ -13,36 +19,33 @@ export interface Intent {
   rawText: string;
 }
 
-const TOOL = {
-  type: 'function' as const,
-  function: {
-    name: 'classify_intent',
-    description: 'Classify the user message into a DeFi intent category',
-    parameters: {
-      type: 'object',
-      required: ['type'],
-      properties: {
-        type: {
-          type: 'string',
-          enum: ['YIELD', 'SWAP', 'ARB', 'DELTA_NEUTRAL', 'SCAN', 'PORTFOLIO', 'TRADES', 'RISK', 'UNKNOWN'],
-          description: 'The intent type',
-        },
-        amount: {
-          type: 'number',
-          description: 'Numeric amount mentioned by the user',
-        },
-        currency: {
-          type: 'string',
-          description: 'Currency / token symbol (e.g. BNB, USDT)',
-        },
-        token: {
-          type: 'string',
-          description: 'Primary token (for swap: from token, for yield: deposit token)',
-        },
-        toToken: {
-          type: 'string',
-          description: 'Target token for swaps (e.g. USDT when swapping BNB to USDT)',
-        },
+const CLASSIFY_TOOL = {
+  name: 'classify_intent',
+  description: 'Classify the user message into a DeFi intent category',
+  parameters: {
+    type: 'object',
+    required: ['type'],
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['YIELD', 'SWAP', 'ARB', 'DELTA_NEUTRAL', 'SCAN', 'PORTFOLIO', 'TRADES', 'RISK', 'UNKNOWN'],
+        description: 'The intent type',
+      },
+      amount: {
+        type: 'number',
+        description: 'Numeric amount mentioned by the user',
+      },
+      currency: {
+        type: 'string',
+        description: 'Currency / token symbol (e.g. BNB, USDT)',
+      },
+      token: {
+        type: 'string',
+        description: 'Primary token (for swap: from token, for yield: deposit token)',
+      },
+      toToken: {
+        type: 'string',
+        description: 'Target token for swaps (e.g. USDT when swapping BNB to USDT)',
       },
     },
   },
@@ -69,25 +72,26 @@ export async function parseIntent(message: string, userId: string): Promise<Inte
       'Extract amount, token, and toToken if mentioned.',
     ].join('\n');
 
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const provider = getLLMProvider();
+    const result = await provider.chat({
+      task: 'planner',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message },
       ],
-      tools: [TOOL],
-      tool_choice: { type: 'function', function: { name: 'classify_intent' } },
-      max_tokens: 400,
+      tools: [CLASSIFY_TOOL],
+      toolChoice: { name: 'classify_intent' },
+      maxTokens: 400,
       temperature: 0,
     });
 
-    const toolCall = response.choices[0]?.message.tool_calls?.[0];
+    const toolCall = result.tool_calls[0];
     if (!toolCall) {
       logger.warn('Intent: no tool call in response — returning UNKNOWN');
       return { type: 'UNKNOWN', rawText: message };
     }
 
-    const input = JSON.parse(toolCall.function.arguments) as Omit<Intent, 'rawText'>;
+    const input = JSON.parse(toolCall.arguments) as Omit<Intent, 'rawText'>;
     logger.info('Intent: classified as %s (amount=%s, token=%s)', input.type, input.amount, input.token);
     return { ...input, rawText: message };
   } catch (e: any) {
@@ -118,17 +122,18 @@ export async function generateConversationalReply(
       'Never mention that you are an AI model or name the underlying model.',
     ].join('\n');
 
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const provider = getLLMProvider();
+    const result = await provider.chat({
+      task: 'planner',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message },
       ],
-      max_tokens: 200,
+      maxTokens: 200,
       temperature: 0.7,
     });
 
-    return response.choices[0]?.message?.content?.trim() || FALLBACK_REPLY;
+    return result.content?.trim() || FALLBACK_REPLY;
   } catch (e: any) {
     logger.error('ConversationalReply error: %s', e.message);
     return FALLBACK_REPLY;
