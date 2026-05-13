@@ -36,7 +36,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-export function startApiServer(port: number = 3002): void {
+/**
+ * Boot the API server. Defaults port to env PORT (Cloud Run sets PORT=8080
+ * by convention) and falls back to 3002 for local dev.
+ */
+export function startApiServer(port: number = Number(process.env.PORT) || 3002): void {
   // Register SPA catch-all LAST so /sse, /messages, and /api/* routes take priority
   if (process.env.NODE_ENV === 'production') {
     const dashboardPath = path.join(__dirname, '..', '..', 'dashboard', 'dist');
