@@ -1,0 +1,61 @@
+[
+  {
+    "name": "swap-clean-args-match",
+    "user_input": "swap 0.1 BNB to USDT",
+    "captured_trajectory": [
+      { "tool": "swap_tokens", "args": { "from_token": "BNB", "to_token": "USDT", "amount": "0.1" } }
+    ],
+    "response": "Swap submitted: 0.1 BNB → USDT via PancakeSwap V2.",
+    "expected_trajectory": {
+      "tool_sequence": [
+        { "name": "swap_tokens", "args_match": { "from_token": "BNB", "to_token": "USDT", "amount": "0.1" } }
+      ]
+    },
+    "human_score": { "tool_correctness": 3, "argument_correctness": 3, "step_efficiency": 3 }
+  },
+  {
+    "name": "wrong-tool-picked",
+    "user_input": "swap 0.1 BNB to USDT",
+    "captured_trajectory": [{ "tool": "get_portfolio", "args": {} }],
+    "response": "No active positions.",
+    "expected_trajectory": {
+      "tool_sequence": [{ "name": "swap_tokens", "args_match": { "from_token": "BNB" } }]
+    },
+    "human_score": { "tool_correctness": 0, "argument_correctness": 0, "step_efficiency": 1 }
+  },
+  {
+    "name": "right-tool-wrong-amount",
+    "user_input": "deposit 0.5 BNB into best yield",
+    "captured_trajectory": [
+      { "tool": "yield_deposit", "args": { "token": "BNB", "amount": "5" } }
+    ],
+    "response": "Deposited 5 BNB into Venus.",
+    "expected_trajectory": {
+      "tool_sequence": [
+        { "name": "yield_deposit", "args_match": { "token": "BNB", "amount": "0.5" } }
+      ]
+    },
+    "human_score": { "tool_correctness": 3, "argument_correctness": 0, "step_efficiency": 3 }
+  },
+  {
+    "name": "extra-unnecessary-call",
+    "user_input": "show my portfolio",
+    "captured_trajectory": [
+      { "tool": "scan_markets", "args": { "category": "yield" } },
+      { "tool": "get_portfolio", "args": {} }
+    ],
+    "response": "Portfolio: 0.2 BNB on Venus, $61.20 total.",
+    "expected_trajectory": { "tool_sequence": [{ "name": "get_portfolio", "args_match": {} }] },
+    "human_score": { "tool_correctness": 3, "argument_correctness": 3, "step_efficiency": 1 }
+  },
+  {
+    "name": "scan-only",
+    "user_input": "what's the best yield right now?",
+    "captured_trajectory": [{ "tool": "scan_markets", "args": { "category": "yield" } }],
+    "response": "Best yield: Venus BNB at 4.21% APY.",
+    "expected_trajectory": {
+      "tool_sequence": [{ "name": "scan_markets", "args_match": { "category": "yield" } }]
+    },
+    "human_score": { "tool_correctness": 3, "argument_correctness": 3, "step_efficiency": 3 }
+  }
+]

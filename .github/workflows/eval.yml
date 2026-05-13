@@ -1,0 +1,77 @@
+# CI gate: trajectory eval suite.
+#
+# Runs on every PR + on push to main. Fails the build if the trajectory
+# pass-rate drops below 90% (configurable via the --threshold flag in
+# run-trajectories.ts).
+#
+# Secrets used (set in repo Settings → Secrets and variables → Actions):
+#   GROQ_API_KEY              — required when LLM_PROVIDER=groq (default in CI)
+#   ENCRYPTION_KEY            — required (>=32 chars) for engine startup
+#   JWT_SECRET                — required (>=32 chars) for engine startup
+#
+# Optional secrets for the Vertex path (set when you want to gate on Gemini 3):
+#   GOOGLE_APPLICATION_CREDENTIALS_JSON — service-account JSON key
+#   GCP_PROJECT_ID, GCP_LOCATION
+#   LLM_PROVIDER=vertex                  (set as repo variable)
+#
+# The job runs in a single VM with a fresh SQLite — no Cloud SQL involved
+# in CI. That keeps the eval gate hermetic + fast (~30s per run).
+
+name: eval
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  trajectories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --legacy-peer-deps
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Optional — write Vertex SA key (only on the Vertex path)
+        if: ${{ vars.LLM_PROVIDER == 'vertex' && secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON != '' }}
+        run: |
+          mkdir -p /tmp/gcp
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > /tmp/gcp/sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp/sa.json" >> $GITHUB_ENV
+
+      - name: Run unit + integration tests
+        env:
+          SCRYPT_N: '16384'
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: npx vitest run
+
+      - name: Run trajectory eval suite
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'groq' }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ vars.GCP_LOCATION }}
+        run: npm run eval -- --threshold 0.9
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results/
+          retention-days: 30
