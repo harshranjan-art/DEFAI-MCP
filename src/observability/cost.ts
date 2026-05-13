@@ -11,13 +11,26 @@ import { logger } from '../utils/logger';
 
 /**
  * Pricing table — USD per 1M tokens.
- * Source: Groq published pricing as of 2026-Q2.
- * When Vertex AI lands (Phase 7), add Gemini Pro / Flash here.
+ *
+ * Sources:
+ *   - Groq: published pricing as of 2026-Q2.
+ *   - Vertex AI (Gemini 3): placeholder values based on the Gemini 1.5/2.x
+ *     pricing trend; TODO[7B-verify]: re-check against the live Vertex
+ *     pricing page in the chosen region (asia-south1 vs us-central1
+ *     differ slightly) before relying on the daily-budget gate.
+ *
+ * Unknown models return cost=0 (with a logged warn), so an out-of-date
+ * pricing table doesn't break the call path — just under-reports spend.
  */
 const PRICING_USD_PER_M: Record<string, { input: number; output: number; cached: number }> = {
+  // Groq — Llama
   'llama-3.3-70b-versatile': { input: 0.59, output: 0.79, cached: 0.30 },
   'llama-3.1-70b-versatile': { input: 0.59, output: 0.79, cached: 0.30 },
   'llama-3.1-8b-instant':    { input: 0.05, output: 0.08, cached: 0.025 },
+
+  // Vertex AI — Gemini 3 (placeholder pricing; TODO[7B-verify])
+  'gemini-3-pro':            { input: 1.25, output: 5.00, cached: 0.3125 },
+  'gemini-3-flash':          { input: 0.075, output: 0.30, cached: 0.01875 },
 };
 
 export type LlmTask = 'planner' | 'verifier' | 'classifier' | 'summarizer' | 'intent' | 'judge';
