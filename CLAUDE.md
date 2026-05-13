@@ -92,8 +92,7 @@ src/index.ts                    ← Entry: starts bot + crons + API server
 │   ├── agentRouter.ts          ← LLM tool-calling agent (provider-agnostic; planner via getLLMProvider)
 │   ├── verifier.ts             ← Layer-3 sub-agent (fresh context, JSON-only output)
 │   ├── intentClassifier.ts     ← Fast classifier routing read-only → cheap variant
-│   ├── summarizer.ts           ← Conversation-history compression
-│   └── intentParser.ts         ← (legacy fallback; provider-agnostic)
+│   └── summarizer.ts           ← Conversation-history compression
 │
 ├── llm/                        ← Phase 7A provider abstraction
 │   ├── types.ts                ← LLMProvider interface (chat / modelFor / name)
@@ -115,7 +114,6 @@ src/index.ts                    ← Entry: starts bot + crons + API server
 │
 ├── wallet/
 │   ├── pimlico.ts              ← SmartAccountClient singleton
-│   ├── execute.ts              ← Legacy on-chain execution
 │   └── encryption.ts           ← AES-256-GCM key encryption
 │
 ├── utils/
