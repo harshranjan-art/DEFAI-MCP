@@ -1,5 +1,7 @@
 # DeFAI MCP: Problem, Solution & Impact
 
+> **2026 update — GCP / Vertex AI pivot (Phase 7).** This document describes the original hackathon scope (Groq / SQLite / Docker Compose). The project has since pivoted to a Cloud Run + Cloud SQL Postgres + Vertex AI (Gemini 3 Pro / Flash) production stack. The Groq path is preserved as a one-flag fallback (`LLM_PROVIDER=groq`). See [DEPLOY.md](DEPLOY.md) for the new deploy runbook and [RESUME.md](RESUME.md) for the resume bullet bank.
+
 ## 1. Problem
 
 ### DeFi is broken for humans — and AI agents can't access it either
