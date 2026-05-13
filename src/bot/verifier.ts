@@ -1,26 +1,30 @@
 /**
  * Layer 3 — verifier sub-agent.
  *
- * A second, smaller LLM (Llama-3.1-8B-Instant) in a FRESH context window with
- * no tools, no conversation history, and a different system prompt. Its job
- * is to look at the planner's proposed tool call and decide whether the args
- * are consistent with what the user actually appears to be asking for.
+ * A second, smaller LLM (Llama-3.1-8B-Instant on Groq, Gemini 3 Flash on
+ * Vertex) in a FRESH context window with no tools, no conversation history,
+ * and a different system prompt. Its job is to look at the planner's
+ * proposed tool call and decide whether the args are consistent with what
+ * the user actually appears to be asking for.
  *
  * Why this catches things the planner can't:
  *   - Different system prompt — an injection that rewrote the planner's
  *     instructions cannot also rewrite the verifier's; the verifier never
  *     sees the planner's history or tool definitions.
- *   - Structured output (response_format JSON) — the verifier can only say
+ *   - Structured output (JSON response_format) — the verifier can only say
  *     yes/no with a reason; no chain-of-thought to be hijacked.
  *   - Small token budget — too small to construct an attack payload.
  *   - temperature: 0, max_tokens: 200 — deterministic, narrow.
  *
  * This is NOT a substitute for engine-level checks (zod, idempotency,
  * confirmation gate, address allowlist). It's the second pair of eyes.
+ *
+ * Provider-agnostic since Phase 7A.
  */
 
-import Groq from 'groq-sdk';
 import { z } from 'zod';
+import { getLLMProvider } from '../llm';
+import type { LLMProvider } from '../llm';
 import { logger } from '../utils/logger';
 
 const VerdictSchema = z.object({
@@ -78,10 +82,10 @@ export interface VerifyOptions {
   userMessage: string;
   marketContext: string;
   /**
-   * Override the Groq client (used in tests to inject a stub).
-   * If not provided, a real Groq client is constructed from GROQ_API_KEY.
+   * Override the LLM provider (used in tests to inject a stub).
+   * If not provided, the global provider singleton is used.
    */
-  groqOverride?: Pick<Groq, 'chat'>;
+  providerOverride?: LLMProvider;
   /**
    * Callback invoked with token usage after the call returns successfully.
    * The agent router uses this to record cost under the same trace_id as
@@ -105,18 +109,8 @@ export const VERIFIER_GATED_TOOLS = new Set<string>([
   'start_arb_session',
 ]);
 
-let cachedGroq: Groq | null = null;
-function getGroqClient(): Groq {
-  if (cachedGroq) return cachedGroq;
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not set — verifier disabled');
-  }
-  cachedGroq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return cachedGroq;
-}
-
 export async function verify(opts: VerifyOptions): Promise<VerifierVerdict> {
-  const client = opts.groqOverride ?? getGroqClient();
+  const provider = opts.providerOverride ?? getLLMProvider();
 
   const userContent = [
     `Proposed action: ${opts.toolName}`,
@@ -125,33 +119,30 @@ export async function verify(opts: VerifyOptions): Promise<VerifierVerdict> {
     `Market context: ${opts.marketContext}`,
   ].join('\n');
 
-  const VERIFIER_MODEL = 'llama-3.1-8b-instant';
   let raw: string;
   try {
-    const completion = await client.chat.completions.create({
-      model: VERIFIER_MODEL,
+    const result = await provider.chat({
+      task: 'verifier',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userContent },
       ],
       temperature: 0,
-      max_tokens: 200,
-      response_format: { type: 'json_object' },
+      maxTokens: 200,
+      responseFormat: 'json_object',
     });
-    raw = completion.choices?.[0]?.message?.content ?? '';
+    raw = result.content ?? '';
+
     if (opts.onUsage) {
-      const usage = (completion as any).usage;
-      if (usage) {
-        try {
-          opts.onUsage({
-            model: VERIFIER_MODEL,
-            input_tokens: usage.prompt_tokens ?? 0,
-            cached_input_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-            output_tokens: usage.completion_tokens ?? 0,
-          });
-        } catch (cbErr: any) {
-          logger.warn({ err: cbErr?.message }, 'verifier onUsage callback threw; ignoring');
-        }
+      try {
+        opts.onUsage({
+          model: result.model,
+          input_tokens: result.usage.input_tokens,
+          cached_input_tokens: result.usage.cached_input_tokens,
+          output_tokens: result.usage.output_tokens,
+        });
+      } catch (cbErr: any) {
+        logger.warn({ err: cbErr?.message }, 'verifier onUsage callback threw; ignoring');
       }
     }
   } catch (e: any) {

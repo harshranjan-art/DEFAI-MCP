@@ -2,12 +2,16 @@
  * LLM-as-judge — scores a captured trajectory against three rubrics
  * (tool-correctness, argument-correctness, step-efficiency) on a 0-3 scale.
  *
- * Default judge: Llama-3.3-70b-versatile via Groq. Tests inject a stubbed
- * Groq client through `groqOverride` so we never make real network calls.
+ * Default judge: the flagship planner model on the active provider
+ * (Llama-3.3-70B on Groq, Gemini 3 Pro on Vertex). Tests inject a stub
+ * provider through `providerOverride` so we never make real network calls.
+ *
+ * Provider-agnostic since Phase 7A.
  */
 
-import Groq from 'groq-sdk';
 import { z } from 'zod';
+import { getLLMProvider } from '../../src/llm';
+import type { LLMProvider } from '../../src/llm';
 import type { CapturedStep, ExpectedTrajectory } from './matcher';
 
 const ScoreSchema = z.object({
@@ -18,8 +22,6 @@ const ScoreSchema = z.object({
 });
 
 export type JudgeScore = z.infer<typeof ScoreSchema>;
-
-export const JUDGE_MODEL = 'llama-3.3-70b-versatile';
 
 const SYSTEM_PROMPT = `You are an evaluator for an AI agent that controls a DeFi trading system. Score the agent's behavior on three rubrics, each as integers 0-3:
 
@@ -37,18 +39,8 @@ export interface JudgeOptions {
   captured_trajectory: CapturedStep[];
   expected_trajectory: ExpectedTrajectory;
   response: string;
-  /** Inject a mock Groq client. If absent, a real client is constructed from GROQ_API_KEY. */
-  groqOverride?: Pick<Groq, 'chat'>;
-}
-
-let cachedGroq: Groq | null = null;
-function getGroqClient(): Groq {
-  if (cachedGroq) return cachedGroq;
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not set — judge cannot run');
-  }
-  cachedGroq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return cachedGroq;
+  /** Inject a mock LLMProvider. If absent, the global provider singleton is used. */
+  providerOverride?: LLMProvider;
 }
 
 const ZERO_SCORE: JudgeScore = {
@@ -59,7 +51,7 @@ const ZERO_SCORE: JudgeScore = {
 };
 
 export async function judgeTrajectory(opts: JudgeOptions): Promise<JudgeScore> {
-  const client = opts.groqOverride ?? getGroqClient();
+  const provider = opts.providerOverride ?? getLLMProvider();
   const userContent = [
     `User input: "${opts.user_input}"`,
     ``,
@@ -78,17 +70,17 @@ export async function judgeTrajectory(opts: JudgeOptions): Promise<JudgeScore> {
 
   let raw: string;
   try {
-    const completion = await client.chat.completions.create({
-      model: JUDGE_MODEL,
+    const result = await provider.chat({
+      task: 'judge',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userContent },
       ],
       temperature: 0,
-      max_tokens: 300,
-      response_format: { type: 'json_object' },
+      maxTokens: 300,
+      responseFormat: 'json_object',
     });
-    raw = completion.choices?.[0]?.message?.content ?? '';
+    raw = result.content ?? '';
   } catch {
     return ZERO_SCORE;
   }
