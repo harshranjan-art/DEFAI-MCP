@@ -1,13 +1,14 @@
 /**
- * Mock helpers for the eval suite.
+ * Mock helpers for the eval suite and unit tests.
  *
  * - mockFetch: install a per-URL response map so eval cases run deterministically
  *   without hitting CoinGecko / DexScreener / etc.
- * - mockGroq: stub the Groq SDK client so the agent's planner returns a
- *   canned tool_call. Used in tests; production `npm run eval` uses real Groq.
+ * - stubProvider: return a fake LLMProvider that yields a canned response.
+ *   Replaces the Phase 6.5-era `stubGroq` (kept for backward compat below).
  */
 
 import { vi } from 'vitest';
+import type { LLMProvider, LLMTask } from '../../src/llm';
 
 export interface FetchHandler {
   (url: string): unknown | undefined;
@@ -40,8 +41,56 @@ export function restoreFetch(): void {
 }
 
 /**
- * Build a stub Groq client that returns a canned response for the next
- * chat.completions.create call. Used in tests of the runner + judge.
+ * Build a stub LLMProvider that returns a canned response. Used in every
+ * unit test of code that hits an LLM.
+ *
+ * Behavior:
+ *   - If `toolCall` is set: the response has one tool_call, content=null.
+ *   - Otherwise: content=`content` (default ''), no tool_calls.
+ *   - Usage fields default to 0 — pass `usage` to exercise cost tracking.
+ *   - `throwError` makes `chat()` reject with `new Error(throwError)`.
+ *
+ * The provider's `name` defaults to 'groq' (so cost-tracking and routing
+ * logic see a Groq-shaped world). Pass `name:'vertex'` to test the Vertex
+ * branch of provider-aware code (e.g. pickPlannerModel).
+ */
+export interface ProviderStubOptions {
+  toolCall?: { name: string; arguments: Record<string, unknown> };
+  content?: string;
+  usage?: { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number };
+  throwError?: string;
+  model?: string;
+  name?: 'groq' | 'vertex';
+}
+
+export function stubProvider(opts: ProviderStubOptions = {}): LLMProvider {
+  const model = opts.model ?? 'test-stub';
+  const name = opts.name ?? 'groq';
+  return {
+    name,
+    modelFor: (_task: LLMTask) => model,
+    chat: vi.fn(async () => {
+      if (opts.throwError) throw new Error(opts.throwError);
+      return {
+        content: opts.toolCall ? null : opts.content ?? '',
+        tool_calls: opts.toolCall
+          ? [{ name: opts.toolCall.name, arguments: JSON.stringify(opts.toolCall.arguments) }]
+          : [],
+        usage: {
+          input_tokens: opts.usage?.input_tokens ?? 0,
+          cached_input_tokens: opts.usage?.cached_input_tokens ?? 0,
+          output_tokens: opts.usage?.output_tokens ?? 0,
+        },
+        model,
+      };
+    }),
+  };
+}
+
+/**
+ * @deprecated Use `stubProvider()` instead — the LLMProvider abstraction
+ * (Phase 7A) replaces direct Groq SDK stubbing. Kept here only so any
+ * out-of-tree code that imported this helper doesn't break.
  */
 export interface GroqStubOptions {
   toolCall?: { name: string; arguments: Record<string, unknown> };
