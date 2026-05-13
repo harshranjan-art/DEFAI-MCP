@@ -112,21 +112,211 @@ describe('VertexProvider — modelFor', () => {
     expect(p.modelFor('verifier')).toBe('gemini-3-flash');
   });
 
-  it('chat() throws a Phase 7B-pending error (scaffold)', async () => {
-    await expect(
-      p.chat({
-        task: 'planner',
-        messages: [{ role: 'user', content: 'hi' }],
-      }),
-    ).rejects.toThrow(/Phase 7A scaffold|Phase 7B/);
-  });
-
   it('falls back to GCP_LOCATION env or us-central1', () => {
     delete process.env.GCP_LOCATION;
     const p1 = new VertexProvider();
     expect(p1.modelFor('planner')).toBe('gemini-3-pro');
     // No way to read location off the public surface, but constructing without
     // throwing is the contract.
+  });
+
+  it('chat() without GCP_PROJECT_ID throws a clear error', async () => {
+    const ORIG_PROJECT = process.env.GCP_PROJECT_ID;
+    delete process.env.GCP_PROJECT_ID;
+    try {
+      const p1 = new VertexProvider();
+      await expect(
+        p1.chat({ task: 'planner', messages: [{ role: 'user', content: 'hi' }] }),
+      ).rejects.toThrow(/GCP_PROJECT_ID is not set/);
+    } finally {
+      if (ORIG_PROJECT === undefined) delete process.env.GCP_PROJECT_ID;
+      else process.env.GCP_PROJECT_ID = ORIG_PROJECT;
+    }
+  });
+});
+
+describe('VertexProvider — chat (mocked Vertex client)', () => {
+  /**
+   * Build a stub Vertex client whose getGenerativeModel returns a
+   * GenerativeModel-shaped object with a captured generateContent. Tests
+   * can read `lastRequest` to assert translation correctness.
+   */
+  function makeMockClient(responseFactory: () => any) {
+    let lastRequest: any = null;
+    return {
+      lastRequestRef: () => lastRequest,
+      vertex: {
+        getGenerativeModel: ({ model }: { model: string }) => ({
+          model,
+          generateContent: async (req: any) => {
+            lastRequest = req;
+            return { response: responseFactory() };
+          },
+        }),
+      } as any,
+    };
+  }
+
+  it('translates messages: system prompt → systemInstruction, user/assistant → user/model', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ text: 'hi back' }] } }],
+      usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 4 },
+    }));
+    const p = new VertexProvider({ project: 'p', location: 'us-central1', _vertexClient: mock.vertex });
+    const r = await p.chat({
+      task: 'planner',
+      messages: [
+        { role: 'system', content: 'You are friendly.' },
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+        { role: 'user', content: 'how are you?' },
+      ],
+    });
+
+    const req = mock.lastRequestRef();
+    expect(req.systemInstruction).toBe('You are friendly.');
+    expect(req.contents).toHaveLength(3);
+    expect(req.contents[0]).toEqual({ role: 'user', parts: [{ text: 'hi' }] });
+    expect(req.contents[1]).toEqual({ role: 'model', parts: [{ text: 'hello' }] });
+    expect(req.contents[2]).toEqual({ role: 'user', parts: [{ text: 'how are you?' }] });
+
+    expect(r.content).toBe('hi back');
+    expect(r.tool_calls).toEqual([]);
+    expect(r.usage).toEqual({ input_tokens: 12, cached_input_tokens: 0, output_tokens: 4 });
+    expect(r.model).toBe('gemini-3-pro');
+  });
+
+  it('joins multiple system messages with double-newline', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    await p.chat({
+      task: 'planner',
+      messages: [
+        { role: 'system', content: 'rule 1' },
+        { role: 'system', content: 'rule 2' },
+        { role: 'user', content: 'go' },
+      ],
+    });
+    expect(mock.lastRequestRef().systemInstruction).toBe('rule 1\n\nrule 2');
+  });
+
+  it('translates tools to functionDeclarations and tool_choice to functionCallingConfig', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [
+        {
+          content: {
+            parts: [{ functionCall: { name: 'get_portfolio', args: {} } }],
+          },
+        },
+      ],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({
+      task: 'planner',
+      messages: [{ role: 'user', content: 'show portfolio' }],
+      tools: [
+        {
+          name: 'get_portfolio',
+          description: 'fetch portfolio',
+          parameters: { type: 'object', properties: {} },
+        },
+      ],
+      toolChoice: 'auto',
+    });
+
+    const req = mock.lastRequestRef();
+    expect(req.tools).toHaveLength(1);
+    expect(req.tools[0].functionDeclarations).toHaveLength(1);
+    expect(req.tools[0].functionDeclarations[0].name).toBe('get_portfolio');
+    expect(req.toolConfig.functionCallingConfig.mode).toBe('AUTO');
+
+    expect(r.tool_calls).toHaveLength(1);
+    expect(r.tool_calls[0].name).toBe('get_portfolio');
+    expect(r.tool_calls[0].arguments).toBe('{}');
+    expect(r.content).toBeNull();
+  });
+
+  it('translates tool_choice={name} to mode=ANY + allowedFunctionNames', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ functionCall: { name: 'swap_tokens', args: { from: 'BNB' } } }] } }],
+      usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({
+      task: 'planner',
+      messages: [{ role: 'user', content: 'swap' }],
+      tools: [{ name: 'swap_tokens', description: 'swap', parameters: { type: 'object' } }],
+      toolChoice: { name: 'swap_tokens' },
+    });
+
+    const cfg = mock.lastRequestRef().toolConfig.functionCallingConfig;
+    expect(cfg.mode).toBe('ANY');
+    expect(cfg.allowedFunctionNames).toEqual(['swap_tokens']);
+    expect(r.tool_calls[0].arguments).toBe('{"from":"BNB"}');
+  });
+
+  it('translates responseFormat=json_object → responseMimeType=application/json', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ text: '{"intent":"read_only"}' }] } }],
+      usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({
+      task: 'intent',
+      messages: [{ role: 'user', content: 'classify' }],
+      responseFormat: 'json_object',
+      temperature: 0,
+      maxTokens: 80,
+    });
+
+    const cfg = mock.lastRequestRef().generationConfig;
+    expect(cfg.responseMimeType).toBe('application/json');
+    expect(cfg.temperature).toBe(0);
+    expect(cfg.maxOutputTokens).toBe(80);
+
+    expect(r.content).toBe('{"intent":"read_only"}');
+    expect(r.model).toBe('gemini-3-flash');
+  });
+
+  it('extracts cached input tokens from usageMetadata.cachedContentTokenCount', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+      usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 50, cachedContentTokenCount: 800 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({ task: 'planner', messages: [{ role: 'user', content: 'hi' }] });
+    expect(r.usage).toEqual({ input_tokens: 1000, cached_input_tokens: 800, output_tokens: 50 });
+  });
+
+  it('handles a safety-block response (no candidates) without throwing', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: undefined,
+      promptFeedback: { blockReason: 'SAFETY' },
+      usageMetadata: { promptTokenCount: 10 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({ task: 'planner', messages: [{ role: 'user', content: 'bad' }] });
+    expect(r.content).toBeNull();
+    expect(r.tool_calls).toEqual([]);
+    expect(r.usage.input_tokens).toBe(10);
+  });
+
+  it('explicit model arg overrides modelFor(task)', async () => {
+    const mock = makeMockClient(() => ({
+      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    }));
+    const p = new VertexProvider({ project: 'p', _vertexClient: mock.vertex });
+    const r = await p.chat({
+      task: 'planner',
+      model: 'gemini-3-flash', // intentionally cheaper than the planner default
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(r.model).toBe('gemini-3-flash');
   });
 });
 
