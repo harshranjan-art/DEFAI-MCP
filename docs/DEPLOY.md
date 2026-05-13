@@ -171,9 +171,13 @@ land — re-check `--set-env-vars` in cloudbuild.yaml.
 To exercise the Postgres path locally before deploying:
 
 ```bash
-# Local postgres in docker
+# Local postgres in docker. Set POSTGRES_PASSWORD first — the compose file
+# fails fast if it's unset (so no literal credential ever lives in the YAML).
+export POSTGRES_USER=defai
+export POSTGRES_PASSWORD="$(openssl rand -hex 16)"
+export POSTGRES_DB=defai
 docker compose -f docker-compose.postgres.yml up -d
-export POSTGRES_URL="postgres://defai:defai@localhost:5432/defai"
+export POSTGRES_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
 npm run dev
 ```
 

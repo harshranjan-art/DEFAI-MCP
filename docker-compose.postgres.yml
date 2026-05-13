@@ -2,9 +2,16 @@
 # used in production so the same schema + migrations apply.
 #
 # Quick start:
-#   docker compose -f docker-compose.postgres.yml up -d
-#   export POSTGRES_URL="postgres://defai:defai@localhost:5432/defai"
-#   npm run dev
+#   1. Create a .env file in this directory (gitignored) with:
+#        POSTGRES_USER=defai
+#        POSTGRES_PASSWORD=<pick a local-only value>
+#        POSTGRES_DB=defai
+#      ...or export those vars in your shell. The compose file refuses to
+#      start if POSTGRES_PASSWORD is unset — by design, so the YAML never
+#      has to embed a literal credential.
+#   2. docker compose -f docker-compose.postgres.yml up -d
+#   3. export POSTGRES_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
+#   4. npm run dev
 #
 # Resetting state (drops all data):
 #   docker compose -f docker-compose.postgres.yml down -v
@@ -14,15 +21,16 @@ services:
     image: postgres:16-alpine
     container_name: defai-postgres
     environment:
-      POSTGRES_USER: defai
-      POSTGRES_PASSWORD: defai
-      POSTGRES_DB: defai
+      POSTGRES_USER: ${POSTGRES_USER:-defai}
+      # Required — fail fast if unset so no literal credential ever sits in this file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your shell or a sibling .env file before "docker compose up"}
+      POSTGRES_DB: ${POSTGRES_DB:-defai}
     ports:
       - "5432:5432"
     volumes:
       - defai-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "defai", "-d", "defai"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 5
