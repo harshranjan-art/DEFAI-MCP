@@ -1,0 +1,31 @@
+# Local Postgres for Phase 7C development. Mirrors the Cloud SQL config
+# used in production so the same schema + migrations apply.
+#
+# Quick start:
+#   docker compose -f docker-compose.postgres.yml up -d
+#   export POSTGRES_URL="postgres://defai:defai@localhost:5432/defai"
+#   npm run dev
+#
+# Resetting state (drops all data):
+#   docker compose -f docker-compose.postgres.yml down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: defai-postgres
+    environment:
+      POSTGRES_USER: defai
+      POSTGRES_PASSWORD: defai
+      POSTGRES_DB: defai
+    ports:
+      - "5432:5432"
+    volumes:
+      - defai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "defai", "-d", "defai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  defai-pgdata:
