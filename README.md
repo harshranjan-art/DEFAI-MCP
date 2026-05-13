@@ -9,6 +9,8 @@
 
 **The first MCP server that gives AI agents real DeFi execution on BNB Chain.** 19 MCP tools for yield farming, cross-DEX arbitrage, token transfers, and delta-neutral strategies — all gasless via ERC-4337 Account Abstraction.
 
+> **2026 update — GCP / Vertex AI pivot.** The project now ships on **Cloud Run** with **Cloud SQL Postgres**, **Vertex AI Gemini 3 Pro / Flash**, Vertex AI embeddings for episodic memory, and Secret Manager. The original Groq / Llama / SQLite stack still works as a one-flag fallback (`LLM_PROVIDER=groq`). See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the deploy runbook.
+
 ---
 
 ## Why MCP?
