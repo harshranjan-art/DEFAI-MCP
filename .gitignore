@@ -22,3 +22,6 @@ refactor-plan/
 # Eval run outputs (historical results; only keep latest in repo)
 evals/results/
 !evals/results/.gitkeep
+
+# Private — never commit (resume / job-application materials)
+docs/RESUME.md
