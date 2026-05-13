@@ -1,5 +1,7 @@
 # DeFAI MCP: Technical Documentation
 
+> **2026 update — GCP / Vertex AI pivot (Phase 7).** This document describes the original hackathon architecture (Groq Llama planner + verifier, SQLite via `better-sqlite3`, single-container Docker Compose). The project now also ships on Cloud Run with Cloud SQL Postgres (`pg` async adapter under `src/core/postgres/`), Vertex AI Gemini 3 Pro/Flash (provider abstraction under `src/llm/`), and Vertex AI embeddings for episodic memory (`src/utils/vectorMemory.ts`). The original stack is preserved as a one-flag fallback (`LLM_PROVIDER=groq`). For the deploy story, see [DEPLOY.md](DEPLOY.md).
+
 ## 1. Architecture
 
 ### System overview

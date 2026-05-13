@@ -9,6 +9,8 @@
 
 **The first MCP server that gives AI agents real DeFi execution on BNB Chain.** 19 MCP tools for yield farming, cross-DEX arbitrage, token transfers, and delta-neutral strategies — all gasless via ERC-4337 Account Abstraction.
 
+> **2026 update — GCP / Vertex AI pivot.** The project now ships on **Cloud Run** with **Cloud SQL Postgres**, **Vertex AI Gemini 3 Pro / Flash**, Vertex AI embeddings for episodic memory, and Secret Manager. The original Groq / Llama / SQLite stack still works as a one-flag fallback (`LLM_PROVIDER=groq`). See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the deploy runbook.
+
 ---
 
 ## Why MCP?
@@ -195,13 +197,20 @@ Open the `[.env.example](.env.example)` file to see full descriptions of each va
 | `PIMLICO_API_KEY` | **Yes** | [dashboard.pimlico.io](https://dashboard.pimlico.io/) (enable BSC Testnet) |
 | `TELEGRAM_BOT_TOKEN` | **Yes** | [@BotFather](https://t.me/BotFather) on Telegram (`/newbot`) |
 | `TELEGRAM_BOT_USERNAME` | **Yes** | From BotFather (without the `@` sign) |
-| `GROQ_API_KEY` | **Yes** | [console.groq.com/keys](https://console.groq.com/keys) |
-| `JWT_SECRET` | **Yes** | Generate: `openssl rand -base64 32` |
-| `ENCRYPTION_KEY` | No | Defaults to `defai-dev-default` (for testnet) |
+| `GROQ_API_KEY` | **Yes** (Groq path) | [console.groq.com/keys](https://console.groq.com/keys). Required when `LLM_PROVIDER=groq` (the default). |
+| `JWT_SECRET` | **Yes** | ≥32 chars. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Process refuses to start if shorter. |
+| `ENCRYPTION_KEY` | **Yes** | ≥32 chars. Same generation command. Process refuses to start if missing or shorter. |
 | `BSC_TESTNET_RPC` | No | Leave blank for default public RPC |
 | `MCP_TRANSPORT` | No | Leave blank (defaults to `stdio` for Claude Desktop) |
 | `DEFAI_USER_ID` | No | Leave blank on first run — fill in after dashboard registration |
 | `TINYFISH_API_KEY` | No | Optional feature |
+| **Vertex AI path (optional)** | | |
+| `LLM_PROVIDER` | No | Set to `vertex` to use Gemini 3 Pro/Flash instead of Llama. Default `groq`. |
+| `GCP_PROJECT_ID` | If `LLM_PROVIDER=vertex` | Your GCP project ID. |
+| `GCP_LOCATION` | No | Vertex region. Default `us-central1`. |
+| **Cloud Run / Postgres (production)** | | See [docs/DEPLOY.md](docs/DEPLOY.md). |
+| `TELEGRAM_MODE` | No | `polling` (local default) or `webhook` (required on Cloud Run — scale-to-zero kills polling). |
+| `CLOUD_SQL_CONNECTION_NAME` / `POSTGRES_URL` | If using Cloud SQL / local Postgres | Either set the Cloud SQL connection name (with Auth Proxy sidecar) OR a `POSTGRES_URL` for self-managed Postgres. SQLite stays the default when neither is set. |
 
 **Your completed `.env` should look like:**
 
@@ -219,7 +228,7 @@ DEFAI_USER_ID=
 TINYFISH_API_KEY=
 ```
 
-> **Tip**: See [.env.example](.env.example) for the full list of variables with detailed comments explaining each one.
+> **Tip**: See [.env.example](.env.example) for the full list of variables (including the Phase 7 Vertex AI / Cloud Run vars) with detailed comments explaining each one. Production deploy steps are in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ---
 

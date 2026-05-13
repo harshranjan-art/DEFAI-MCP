@@ -10,7 +10,10 @@ A CI-friendly evaluation harness for the LLM agent. Two suites:
 ## Running
 
 ```bash
-# Full trajectory eval against live Groq (requires GROQ_API_KEY)
+# Full trajectory eval against the active provider (Groq or Vertex per LLM_PROVIDER).
+# Requires GROQ_API_KEY for the Groq path, or GCP creds for the Vertex path.
+# The runner prints `Provider: groq (planner=llama-..., judge=...)` before the
+# first case so eval results are attributable to a specific stack.
 npm run eval:trajectories
 
 # Skip the LLM-as-judge (structural match only — much faster, free)
@@ -67,6 +70,12 @@ to capture every tool dispatch. The hook is null in production (zero
 runtime cost) and registered only while the eval runner is exercising
 a case.
 
-LLM-as-judge uses Llama-3.3-70b-versatile with structured JSON output
-(zod-validated, 0-3 rubrics). Calibrate quarterly against hand-scored
-cases (see [refactor-plan/phase-5-evaluation-framework.md](../refactor-plan/phase-5-evaluation-framework.md)).
+LLM-as-judge is provider-agnostic since Phase 7A — it resolves to
+`provider.modelFor('judge')`, which is Llama-3.3-70b-versatile on Groq
+and Gemini 3 Pro on Vertex. Output is structured JSON (zod-validated,
+0-3 rubrics).
+
+Calibrate after any planner/judge model swap with
+`ts-node scripts/calibrate-judge.ts evals/calibration/judge-cases.json`.
+The script measures agreement against a hand-scored ground truth (±1 per
+rubric tolerance) and fails the run if agreement < 80%.
