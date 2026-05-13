@@ -5,7 +5,7 @@ import 'dotenv/config';
 import { registerSignalHandlers, onShutdown } from './utils/lifecycle';
 registerSignalHandlers();
 
-import { startBot } from './bot/index';
+import { startBot, startBotWebhook } from './bot/index';
 import { startYieldWatcher } from './monitor/yieldWatcher';
 import { startArbWatcher } from './monitor/arbWatcher';
 import { startSnapshotLogger } from './monitor/snapshotLogger';
@@ -55,8 +55,19 @@ async function main() {
     logger.info('Default user activated: %s', defaultId);
   }
 
-  // Start Telegram bot
-  startBot();
+  // Start Telegram bot. On Cloud Run we use webhook mode (scale-to-zero
+  // kills long-polling); locally we default to polling.
+  if (process.env.TELEGRAM_MODE === 'webhook') {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (token) {
+      // Path embeds the token as a shared secret; Telegram only knows this URL.
+      await startBotWebhook(apiApp, `/webhook/${token}`);
+    } else {
+      logger.warn('TELEGRAM_MODE=webhook but TELEGRAM_BOT_TOKEN unset');
+    }
+  } else {
+    startBot();
+  }
 
   // Start cron jobs
   startYieldWatcher();

@@ -334,5 +334,49 @@ export function startBot(): void {
     return;
   }
   bot.launch();
-  logger.info('Telegram bot launched');
+  logger.info('Telegram bot launched (long-polling)');
+}
+
+/**
+ * Webhook mode — required on Cloud Run because scale-to-zero kills any
+ * background polling loop within ~15 minutes of inactivity. Telegram
+ * webhooks bypass that: Telegram POSTs to our /webhook/<token> endpoint
+ * whenever a message arrives, which Cloud Run answers by waking the
+ * instance (or starting a new one if scaled to zero).
+ *
+ * Mount this on the same Express app that serves the REST API + dashboard
+ * so we use one container, one port, one ingress URL — matching the
+ * Cloud Run single-service deploy in service.yaml.
+ *
+ * The path embeds the bot token as a shared secret. Telegram won't
+ * accept updates from anyone who doesn't know the URL, and the token
+ * is already secret-bearing for the bot API itself. Belt-and-suspenders:
+ * Telegraf supports a separate `secretToken` if you ever want to rotate
+ * without touching the URL — set TELEGRAM_WEBHOOK_SECRET to use it.
+ */
+export async function startBotWebhook(
+  expressApp: import('express').Express,
+  secretPath: string,
+): Promise<void> {
+  if (!bot) {
+    logger.warn('TELEGRAM_BOT_TOKEN not set — webhook mount skipped');
+    return;
+  }
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET || undefined;
+  expressApp.use(bot.webhookCallback(secretPath, { secretToken }));
+  logger.info({ secretPath, secretToken: secretToken ? 'set' : 'unset' }, 'Telegram webhook handler mounted');
+
+  // Optional: register the webhook URL with Telegram. Only do this when
+  // TELEGRAM_WEBHOOK_URL is set — otherwise the operator is registering
+  // the URL out-of-band (e.g. as part of the gcloud deploy).
+  const baseUrl = process.env.TELEGRAM_WEBHOOK_URL;
+  if (baseUrl) {
+    try {
+      const url = `${baseUrl.replace(/\/$/, '')}${secretPath}`;
+      await bot.telegram.setWebhook(url, { secret_token: secretToken });
+      logger.info({ url }, 'Telegram webhook URL registered');
+    } catch (e: any) {
+      logger.error({ err: e?.message }, 'failed to register Telegram webhook URL');
+    }
+  }
 }

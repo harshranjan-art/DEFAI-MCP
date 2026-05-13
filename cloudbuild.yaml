@@ -1,0 +1,77 @@
+# Cloud Build pipeline for DeFAI → Cloud Run.
+#
+# Trigger:
+#   gcloud builds submit --config=cloudbuild.yaml \
+#     --substitutions=_REGION=asia-south1,_SERVICE=defai
+#
+# Steps:
+#   1. Build the multi-stage Docker image, tagged with both the commit SHA
+#      (immutable, for rollback) and 'latest' (for the convenient deploy).
+#   2. Push to Artifact Registry.
+#   3. Deploy to Cloud Run, wiring up the Cloud SQL connection + secrets.
+#
+# Secrets live in Secret Manager and are mounted as env vars at deploy time
+# via --set-secrets. The runtime service account needs:
+#   - roles/aiplatform.user             (Vertex AI calls)
+#   - roles/cloudsql.client             (Cloud SQL Auth Proxy)
+#   - roles/secretmanager.secretAccessor (read secrets at boot)
+#
+# Set the substitutions in the gcloud command or via a Cloud Build trigger.
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: defai
+  _REPO: defai
+  _CLOUDSQL_INSTANCE: ""  # e.g. my-project:us-central1:defai-pg
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # ─── Build ────────────────────────────────────────────────────────────
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  # ─── Push ─────────────────────────────────────────────────────────────
+  - id: push-sha
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA"]
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest"]
+
+  # ─── Deploy ───────────────────────────────────────────────────────────
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated  # Telegram needs to reach /webhook publicly
+      - --min-instances=1        # avoid cold starts hitting the webhook
+      - --max-instances=10
+      - --memory=1Gi
+      - --cpu=1
+      - --concurrency=80
+      - --timeout=300s
+      - --service-account=${_SERVICE}-sa@$PROJECT_ID.iam.gserviceaccount.com
+      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --set-env-vars=NODE_ENV=production,LLM_PROVIDER=vertex,VECTOR_MEMORY_PROVIDER=vertex,TELEGRAM_MODE=webhook,GCP_PROJECT_ID=$PROJECT_ID,GCP_LOCATION=${_REGION},CLOUD_SQL_CONNECTION_NAME=${_CLOUDSQL_INSTANCE}
+      - --set-secrets=ENCRYPTION_KEY=defai-encryption-key:latest,JWT_SECRET=defai-jwt-secret:latest,PRIVATE_KEY=defai-private-key:latest,PIMLICO_API_KEY=defai-pimlico-key:latest,TELEGRAM_BOT_TOKEN=defai-telegram-token:latest,TELEGRAM_WEBHOOK_SECRET=defai-telegram-webhook-secret:latest,POSTGRES_USER=defai-postgres-user:latest,POSTGRES_PASSWORD=defai-postgres-password:latest,POSTGRES_DATABASE=defai-postgres-database:latest,GROQ_API_KEY=defai-groq-key:latest
+
+# Artifact Registry images don't need separate listing; they're tagged
+# during the build step.
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
