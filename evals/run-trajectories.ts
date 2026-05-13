@@ -22,6 +22,7 @@ import {
   formatMarkdown,
   type TrajectoryResult,
 } from './helpers/runner';
+import { getLLMProvider } from '../src/llm';
 
 const DEFAULT_THRESHOLD = 0.9;
 
@@ -46,6 +47,21 @@ async function main(): Promise<void> {
   if (cases.length === 0) {
     console.error(`No trajectory cases found in ${dir}`);
     process.exit(1);
+  }
+
+  // Log the active provider + resolved models so eval results are
+  // attributable to a specific stack (Groq/Llama vs Vertex/Gemini-3).
+  // Phase 7A made this safe to call even without API keys configured —
+  // construction is cheap; only chat() requires creds.
+  try {
+    const provider = getLLMProvider();
+    console.log(
+      `Provider: ${provider.name}  ` +
+        `(planner=${provider.modelFor('planner')}, judge=${provider.modelFor('judge')}, ` +
+        `verifier/classifier=${provider.modelFor('verifier')})`,
+    );
+  } catch (e: any) {
+    console.warn(`Provider resolution failed: ${e?.message ?? e}`);
   }
 
   console.log(`Running ${cases.length} trajectories from ${dir} (judge=${judge})`);
