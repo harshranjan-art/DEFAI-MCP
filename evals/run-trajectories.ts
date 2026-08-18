@@ -22,6 +22,7 @@ import {
   formatMarkdown,
   type TrajectoryResult,
 } from './helpers/runner';
+import { ensureEvalUsers } from './helpers/seedUsers';
 import { getLLMProvider } from '../src/llm';
 
 const DEFAULT_THRESHOLD = 0.9;
@@ -80,6 +81,12 @@ async function main(): Promise<void> {
   } catch (e: any) {
     console.warn(`Provider resolution failed: ${e?.message ?? e}`);
   }
+
+  // Write-path handlers call walletManager.activate() unconditionally
+  // before dispatching, even on the safe confirmation-preview branch — so
+  // every referenced user_id needs a real row to reach that branch at all.
+  // Idempotent: only inserts users that don't already exist.
+  await ensureEvalUsers(baseCases.map((tc) => tc.user_id));
 
   console.log(
     `Running ${cases.length} trajectories from ${dir}` +
