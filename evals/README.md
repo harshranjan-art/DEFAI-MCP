@@ -1,5 +1,33 @@
 # DeFAI Eval Suite
 
+## Status (as of the `feat/eval-hardening` branch)
+
+Built and unit-tested, **not yet executed against a live model**:
+
+| Piece | State |
+|---|---|
+| Golden trajectories | 35 cases (`trajectories/`), full 16-tool coverage — built |
+| Adversarial suite | 20 cases (`adversarial/`), 6 attack categories — built (previously documented as "Phase 5.5", zero cases existed) |
+| Latency percentiles, `--repeat` volume mode | built, unit-tested (`latencyStats`, `formatMarkdown` in `helpers/runner.ts`) |
+| `forbidden_response_keywords` matcher field | built, unit-tested |
+| Eval-user auto-seeding | built (`helpers/seedUsers.ts`) — required because write-tool handlers call `walletManager.activate()` unconditionally, even on the safe preview branch |
+| **A real run producing real pass-rate / latency / bypass numbers** | **not done** — needs `GROQ_API_KEY` and `PIMLICO_API_KEY` in `.env`, which nobody but the repo owner should paste into a chat transcript |
+
+**To produce real numbers**, from the repo root with a filled-in `.env`:
+
+```bash
+npm run eval:trajectories   # 35 golden cases, judged — pass rate + latency
+npm run eval:adversarial    # 20 adversarial cases — bypass count (want: 0)
+npm run eval:volume         # 55 cases × 22 repeats ≈ 1,210 executions — stable p50/p95/p99
+```
+
+Each run writes `evals/results/latest.md` (gitignored — copy the numbers
+into a permanent doc if you want them citable later; git history alone
+won't preserve them). Until this has actually been run, treat any specific
+number in this README, a resume, or a slide deck as **not yet verified** —
+the honest claim right now is "the pipeline exists and gates merges," not
+a specific pass rate or transaction count.
+
 A CI-friendly evaluation harness for the LLM agent. Two suites:
 
 - **`trajectories/`** — golden user-input → expected-tool-sequence cases.
