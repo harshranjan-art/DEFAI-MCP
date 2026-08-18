@@ -1,0 +1,13 @@
+{
+  "name": "start_arb_session_full_params",
+  "difficulty": "hard",
+  "user_input": "Start the arbitrage bot for 2 hours, with a max loss of 10 USD and max slippage of 50 basis points.",
+  "user_id": "eval-user-arb-start",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "start_arb_session", "args_match": { "duration_hours": 2, "max_loss_usd": 10, "max_slippage_bps": 50 } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

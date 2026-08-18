@@ -1,0 +1,13 @@
+{
+  "name": "trade_history_arb_filter",
+  "difficulty": "easy",
+  "user_input": "Show me my past arbitrage trades only.",
+  "user_id": "eval-user-history-arb",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "get_trade_history", "args_match": { "trade_type": "arb" } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

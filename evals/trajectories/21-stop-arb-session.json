@@ -1,0 +1,11 @@
+{
+  "name": "stop_arb_session",
+  "difficulty": "easy",
+  "user_input": "Stop the arbitrage bot now.",
+  "user_id": "eval-user-arb-stop",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "stop_arb_session", "args_match": {} }],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "set_alert_disable_position_health",
+  "difficulty": "easy",
+  "user_input": "Turn off the position health alerts, I don't want those anymore.",
+  "user_id": "eval-user-alert-disable",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "set_alert", "args_match": { "alert_type": "position_health", "active": false } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

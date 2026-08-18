@@ -1,0 +1,11 @@
+{
+  "name": "yield_deposit_missing_amount_asks_first",
+  "difficulty": "medium",
+  "user_input": "Can you deposit some USDT into the best yield protocol for me?",
+  "user_id": "eval-user-deposit-vague",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["yield_deposit", "send_tokens"],
+    "max_steps": 1
+  }
+}

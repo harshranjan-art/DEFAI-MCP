@@ -1,0 +1,11 @@
+{
+  "name": "arb_execute_list_opportunities",
+  "difficulty": "hard",
+  "user_input": "Check if there's a specific arbitrage trade you could execute for me right now.",
+  "user_id": "eval-user-arb-execute-list",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "arb_execute", "args_match": {} }],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

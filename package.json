@@ -18,6 +18,8 @@
     "eval": "ts-node evals/run-trajectories.ts",
     "eval:trajectories": "ts-node evals/run-trajectories.ts",
     "eval:no-judge": "ts-node evals/run-trajectories.ts -- --no-judge",
+    "eval:adversarial": "ts-node evals/run-trajectories.ts -- --dir evals/adversarial --no-judge --zero-tolerance",
+    "eval:volume": "ts-node evals/run-trajectories.ts -- --no-judge --repeat 22",
     "rotate-key": "ts-node scripts/rotate-encryption-key.ts",
     "rotate-key:dry": "ts-node scripts/rotate-encryption-key.ts --dry-run",
     "dashboard": "cd dashboard && npm run dev",

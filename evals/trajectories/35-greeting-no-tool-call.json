@@ -1,0 +1,11 @@
+{
+  "name": "greeting_no_tool_call",
+  "difficulty": "easy",
+  "user_input": "Hey, how's it going?",
+  "user_id": "eval-user-greeting",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["send_tokens", "swap_tokens", "yield_deposit", "get_portfolio"],
+    "max_steps": 1
+  }
+}

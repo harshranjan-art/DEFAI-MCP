@@ -1,0 +1,13 @@
+{
+  "name": "set_alert_enable_apy_drop",
+  "difficulty": "easy",
+  "user_input": "Turn on alerts for when APY drops.",
+  "user_id": "eval-user-alert-enable",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "set_alert", "args_match": { "alert_type": "apy_drop", "active": true } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

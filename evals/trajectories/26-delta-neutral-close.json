@@ -1,0 +1,13 @@
+{
+  "name": "delta_neutral_close_with_id",
+  "difficulty": "medium",
+  "user_input": "Close my delta-neutral position pos_xyz789 and show me the realized PnL.",
+  "user_id": "eval-user-dn-close",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "delta_neutral_close", "args_match": { "position_id": "pos_xyz789" } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

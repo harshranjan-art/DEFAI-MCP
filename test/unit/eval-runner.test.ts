@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { runTrajectory, aggregate, formatMarkdown, type TrajectoryCase } from '../../evals/helpers/runner';
+import { runTrajectory, aggregate, formatMarkdown, latencyStats, type TrajectoryCase } from '../../evals/helpers/runner';
 import { setToolCallListener } from '../../src/bot/agentRouter';
 
 const SIMPLE_CASE: TrajectoryCase = {
@@ -124,5 +124,52 @@ describe('aggregate + formatMarkdown', () => {
     expect(md).toContain('| c |');
     expect(md).toContain('✅');
     expect(md).toContain('❌');
+  });
+
+  it('includes a latency summary line', () => {
+    const md = formatMarkdown(aggregate(FAKE_RESULTS));
+    expect(md).toContain('Latency:');
+    expect(md).toContain('p50=');
+    expect(md).toContain('p95=');
+  });
+
+  it('caps the per-case table for large repeat runs, keeping every failure', () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      case_name: `case_${i}`,
+      difficulty: 'easy',
+      captured: [],
+      response: '',
+      match: { passed: i % 20 !== 0, failures: i % 20 === 0 ? ['boom'] : [] },
+      duration_ms: 10,
+    }));
+    const report = aggregate(many);
+    const md = formatMarkdown(report);
+    const failedRows = many.filter((r) => !r.match.passed);
+    for (const r of failedRows) {
+      expect(md).toContain(`| ${r.case_name} |`);
+    }
+    expect(md).toContain('showing');
+  });
+});
+
+describe('latencyStats', () => {
+  it('returns zeroed stats for an empty array', () => {
+    expect(latencyStats([])).toEqual({ min_ms: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, max_ms: 0, avg_ms: 0 });
+  });
+
+  it('computes min/max/avg correctly on a small sample', () => {
+    const s = latencyStats([100, 200, 300]);
+    expect(s.min_ms).toBe(100);
+    expect(s.max_ms).toBe(300);
+    expect(s.avg_ms).toBe(200);
+  });
+
+  it('p99 never exceeds max and p50 sits within the range', () => {
+    const durations = Array.from({ length: 100 }, (_, i) => (i + 1) * 10); // 10..1000
+    const s = latencyStats(durations);
+    expect(s.p99_ms).toBeLessThanOrEqual(s.max_ms);
+    expect(s.p50_ms).toBeGreaterThanOrEqual(s.min_ms);
+    expect(s.p50_ms).toBeLessThanOrEqual(s.p95_ms);
+    expect(s.p95_ms).toBeLessThanOrEqual(s.p99_ms);
   });
 });

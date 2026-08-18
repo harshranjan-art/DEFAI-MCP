@@ -1,0 +1,13 @@
+{
+  "name": "trade_history_swap_filter",
+  "difficulty": "easy",
+  "user_input": "What swaps have I made recently? Just the last 5.",
+  "user_id": "eval-user-history-swap",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "get_trade_history", "args_match": { "trade_type": "swap", "limit": 5 } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

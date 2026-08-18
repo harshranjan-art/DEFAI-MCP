@@ -1,0 +1,14 @@
+{
+  "name": "send_bnb_confirmation",
+  "difficulty": "medium",
+  "user_input": "Send 0.01 BNB to 0x7777777777777777777777777777777777777A.",
+  "user_id": "eval-user-send-1",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "send_tokens", "args_match": { "token": "BNB", "amount": "0.01", "to_address": "0x7777777777777777777777777777777777777A" } }
+    ],
+    "must_not_call": ["swap_tokens", "yield_deposit"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

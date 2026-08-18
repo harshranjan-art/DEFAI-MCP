@@ -1,0 +1,13 @@
+{
+  "name": "rotate_position_with_id",
+  "difficulty": "medium",
+  "user_input": "Rotate my position pos_abc123 into a higher-APY protocol if one's available.",
+  "user_id": "eval-user-rotate",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "rotate_position", "args_match": { "position_id": "pos_abc123" } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

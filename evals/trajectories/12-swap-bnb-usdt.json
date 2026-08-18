@@ -1,0 +1,14 @@
+{
+  "name": "swap_bnb_to_usdt_confirmation",
+  "difficulty": "medium",
+  "user_input": "Swap 0.2 BNB to USDT.",
+  "user_id": "eval-user-swap-1",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "swap_tokens", "args_match": { "from_token": "BNB", "to_token": "USDT", "amount": "0.2" } }
+    ],
+    "must_not_call": ["send_tokens", "yield_deposit"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

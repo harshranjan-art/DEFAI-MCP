@@ -1,0 +1,11 @@
+{
+  "name": "get_arb_status",
+  "difficulty": "easy",
+  "user_input": "Is my arbitrage bot session still running? What's the current PnL?",
+  "user_id": "eval-user-arb-status",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "get_arb_status", "args_match": {} }],
+    "must_not_call": ["start_arb_session", "stop_arb_session"],
+    "max_steps": 2
+  }
+}

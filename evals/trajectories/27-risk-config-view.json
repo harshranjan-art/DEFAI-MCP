@@ -1,0 +1,11 @@
+{
+  "name": "risk_config_view",
+  "difficulty": "easy",
+  "user_input": "What are my current risk management settings?",
+  "user_id": "eval-user-risk-view",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "risk_config", "args_match": {} }],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}
