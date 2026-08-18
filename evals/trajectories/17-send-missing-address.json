@@ -1,0 +1,11 @@
+{
+  "name": "send_missing_address_asks_first",
+  "difficulty": "medium",
+  "user_input": "Send 0.1 BNB for me real quick.",
+  "user_id": "eval-user-send-vague",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 1
+  }
+}

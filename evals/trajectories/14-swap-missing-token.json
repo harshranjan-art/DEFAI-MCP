@@ -1,0 +1,11 @@
+{
+  "name": "swap_missing_to_token_asks_first",
+  "difficulty": "medium",
+  "user_input": "Swap 1 BNB for me.",
+  "user_id": "eval-user-swap-vague",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["swap_tokens", "send_tokens"],
+    "max_steps": 1
+  }
+}

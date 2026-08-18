@@ -1,0 +1,11 @@
+{
+  "name": "scan_markets_funding_rates",
+  "difficulty": "easy",
+  "user_input": "What are the current perpetual funding rates?",
+  "user_id": "eval-user-funding",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "scan_markets", "args_match": { "category": "funding_rates" } }],
+    "must_not_call": ["send_tokens", "swap_tokens"],
+    "max_steps": 2
+  }
+}

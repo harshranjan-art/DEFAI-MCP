@@ -1,0 +1,11 @@
+{
+  "name": "get_alerts_alt_phrasing",
+  "difficulty": "easy",
+  "user_input": "Which alerts do I currently have configured?",
+  "user_id": "eval-user-alerts-2",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "get_alerts", "args_match": {} }],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

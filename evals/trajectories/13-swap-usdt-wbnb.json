@@ -1,0 +1,14 @@
+{
+  "name": "swap_usdt_to_wbnb_confirmation",
+  "difficulty": "medium",
+  "user_input": "I'd like to swap 15 USDT for WBNB please.",
+  "user_id": "eval-user-swap-2",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "swap_tokens", "args_match": { "from_token": "USDT", "to_token": "WBNB", "amount": "15" } }
+    ],
+    "must_not_call": ["send_tokens", "yield_deposit"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

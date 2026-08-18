@@ -1,0 +1,14 @@
+{
+  "name": "yield_deposit_usdt_confirmation",
+  "difficulty": "medium",
+  "user_input": "I want to put 25 USDT into whichever protocol has the highest APY.",
+  "user_id": "eval-user-deposit-usdt",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "yield_deposit", "args_match": { "amount": "25", "token": "USDT" } }
+    ],
+    "must_not_call": ["send_tokens", "swap_tokens"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

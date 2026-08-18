@@ -1,0 +1,14 @@
+{
+  "name": "delta_neutral_open_bnb_confirmation",
+  "difficulty": "medium",
+  "user_input": "Open a delta-neutral position on BNB with 100 USD notional.",
+  "user_id": "eval-user-dn-open-1",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "delta_neutral_open", "args_match": { "token": "BNB", "notional_usd": "100" } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

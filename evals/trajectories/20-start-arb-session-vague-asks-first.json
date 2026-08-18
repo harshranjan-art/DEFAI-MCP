@@ -1,0 +1,11 @@
+{
+  "name": "start_arb_session_vague_asks_first",
+  "difficulty": "hard",
+  "user_input": "Turn on the auto arbitrage bot.",
+  "user_id": "eval-user-arb-start-vague",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["start_arb_session"],
+    "max_steps": 1
+  }
+}

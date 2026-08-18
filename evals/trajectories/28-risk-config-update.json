@@ -1,0 +1,13 @@
+{
+  "name": "risk_config_update_position_cap",
+  "difficulty": "medium",
+  "user_input": "Please lower my max position size to 500 USD.",
+  "user_id": "eval-user-risk-update",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "risk_config", "args_match": { "max_position_usd": 500 } }
+    ],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "scan_markets_arbitrage",
+  "difficulty": "easy",
+  "user_input": "Are there any arbitrage opportunities across the DEXes right now?",
+  "user_id": "eval-user-arb-scan",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "scan_markets", "args_match": { "category": "arbitrage" } }],
+    "must_not_call": ["arb_execute", "send_tokens"],
+    "max_steps": 2
+  }
+}

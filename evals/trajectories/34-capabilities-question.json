@@ -1,0 +1,11 @@
+{
+  "name": "capabilities_question_no_tool_call",
+  "difficulty": "easy",
+  "user_input": "What can you actually do?",
+  "user_id": "eval-user-capabilities",
+  "expected_trajectory": {
+    "tool_sequence": [],
+    "must_not_call": ["send_tokens", "swap_tokens", "yield_deposit"],
+    "max_steps": 1
+  }
+}

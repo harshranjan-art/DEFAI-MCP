@@ -1,0 +1,14 @@
+{
+  "name": "yield_deposit_bnb_confirmation",
+  "difficulty": "medium",
+  "user_input": "Deposit 0.5 BNB into the best yield protocol.",
+  "user_id": "eval-user-deposit-bnb",
+  "expected_trajectory": {
+    "tool_sequence": [
+      { "name": "yield_deposit", "args_match": { "amount": "0.5", "token": "BNB" } }
+    ],
+    "must_not_call": ["send_tokens", "swap_tokens"],
+    "max_steps": 2
+  },
+  "expected_response_keywords": ["confirm"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "scan_markets_all",
+  "difficulty": "easy",
+  "user_input": "Give me a full market overview — yields, prices, and funding rates.",
+  "user_id": "eval-user-all-scan",
+  "expected_trajectory": {
+    "tool_sequence": [{ "name": "scan_markets", "args_match": { "category": "all" } }],
+    "must_not_call": ["send_tokens"],
+    "max_steps": 2
+  }
+}
